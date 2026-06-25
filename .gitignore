@@ -1,0 +1,23 @@
+# Android Build & IDE
+*.iml
+.gradle/
+.kotlin/
+/local.properties
+.idea/
+.vscode/
+.DS_Store
+/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+out/
+
+# Spring Boot Backend
+Backend/target/
+Backend/.idea/
+Backend/*.iml
+
+# JVM Crash & Diagnostic logs
+*.log
+hs_err_pid*
+replay_pid*
