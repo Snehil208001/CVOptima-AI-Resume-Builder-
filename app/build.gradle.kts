@@ -63,6 +63,7 @@ dependencies {
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging.interceptor)
+    implementation(libs.okhttp.sse)
 
     // Navigation & UI creation dependencies
     implementation(libs.androidx.navigation.compose)

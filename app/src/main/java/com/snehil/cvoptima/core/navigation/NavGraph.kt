@@ -12,6 +12,12 @@ import androidx.navigation.compose.composable
 import com.snehil.cvoptima.mainui.splashscreen.ui.SplashScreen
 import com.snehil.cvoptima.mainui.loginscreen.ui.LoginScreen
 import com.snehil.cvoptima.mainui.registerscreen.ui.RegisterScreen
+import com.snehil.cvoptima.mainui.homescreen.ui.HomeScreen
+import com.snehil.cvoptima.mainui.profilescreen.ui.ProfileEditorScreen
+import com.snehil.cvoptima.mainui.generator.ui.JobInputScreen
+import com.snehil.cvoptima.mainui.generator.ui.StreamingGenerationScreen
+import androidx.navigation.navArgument
+import androidx.navigation.NavType
 
 @Composable
 fun SetupNavGraph(
@@ -31,13 +37,23 @@ fun SetupNavGraph(
             RegisterScreen(navController = navController)
         }
         composable(Screen.Home.route) {
-            // Placeholder for Home Screen
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Home Screen")
-            }
+            HomeScreen(navController = navController)
+        }
+        composable(Screen.ProfileEditor.route) {
+            ProfileEditorScreen(navController = navController)
+        }
+        composable(Screen.JobInput.route) {
+            JobInputScreen(navController = navController)
+        }
+        composable(Screen.Apply.route) {
+            JobInputScreen(navController = navController)
+        }
+        composable(
+            route = Screen.Progress.route,
+            arguments = listOf(navArgument("taskId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val taskId = backStackEntry.arguments?.getString("taskId") ?: ""
+            StreamingGenerationScreen(navController = navController, taskId = taskId)
         }
     }
 }

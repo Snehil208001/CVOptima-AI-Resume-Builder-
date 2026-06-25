@@ -25,6 +25,8 @@ The project follows a split-module structure:
 ### 📱 Android Application
 * **Modern Jetpack Compose UI**: Built with Material 3 design, smooth transitions, and premium micro-animations (Lottie integration).
 * **Robust Authentication Flow**: Complete Splash, Login, and Registration screens with state management via Dagger Hilt ViewModels.
+* **AI Optimization Entry Gate (`JobInputScreen`)**: A validation-locked input interface featuring structured fields for target company name, desired job title, and a large multi-line text area (240.dp) for pasting raw job descriptions. Validation automatically unlocks the optimization flow.
+* **SSE Typewriter Generation (`StreamingGenerationScreen`)**: A specialized monospaced console view that listens to backend Server-Sent Events (SSE) using OkHttp's `EventSource` and renders optimized resume bullet points dynamically with auto-scroll logic.
 * **Offline-First Database**: Locally caches tokens, educational history, work experiences, and skills using Android Room Database.
 * **Smart Network Layer**: Features Retrofit/OkHttp with custom authentication interceptors (`AuthInterceptor`) for seamless bearer-token authorization.
 * **Asynchronous Image Loading**: Integrated with Coil for fast, memory-efficient image rendering.
