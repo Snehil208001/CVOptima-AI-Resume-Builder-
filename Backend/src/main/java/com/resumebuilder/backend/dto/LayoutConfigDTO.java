@@ -4,18 +4,14 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import jakarta.validation.constraints.NotBlank;
+import java.util.List;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class SkillDTO {
-
+public class LayoutConfigDTO {
     private Long id;
-
-    @NotBlank(message = "Skill name is required")
-    private String name;
-
-    private String proficiencyLevel;
+    private String layoutDensity;
+    private List<String> sectionOrder;
 }

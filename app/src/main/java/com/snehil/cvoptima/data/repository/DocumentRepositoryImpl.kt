@@ -16,35 +16,7 @@ class DocumentRepositoryImpl @Inject constructor(
 ) : DocumentRepository {
 
     // Keep an in-memory mutable list of documents so that "Tailor New Resume" additions persist during the app run
-    private val mockDocuments = mutableListOf(
-        Document(
-            id = UUID.randomUUID().toString(),
-            userId = 1L,
-            jobTitle = "Senior Software Engineer",
-            companyName = "Google",
-            jdText = "Looking for a software engineer with 5+ years of experience in Kotlin and Android development.",
-            resumeMd = "# John Doe\n## Senior Android Engineer\n5+ years of experience building modern Android applications...",
-            status = "OPTIMIZED"
-        ),
-        Document(
-            id = UUID.randomUUID().toString(),
-            userId = 1L,
-            jobTitle = "Product Manager",
-            companyName = "Stripe",
-            jdText = "Seeking a product manager to scale global payments infrastructure. Experience with APIs preferred.",
-            resumeMd = "# Jane Smith\n## Technical Product Manager\nFocused on API product design, integration, and ecosystem expansion...",
-            status = "GENERATED"
-        ),
-        Document(
-            id = UUID.randomUUID().toString(),
-            userId = 1L,
-            jobTitle = "Data Scientist",
-            companyName = "Netflix",
-            jdText = "Build recommendation systems using deep learning, reinforcement learning, and big data pipeline tools.",
-            resumeMd = "# Alex Lee\n## Data Scientist & ML Engineer\nDeveloped recommendation models increasing engagement by 15%...",
-            status = "DRAFT"
-        )
-    )
+    private val mockDocuments = mutableListOf<Document>()
 
     override fun getRecentDocuments(): Flow<List<Document>> = flow {
         try {

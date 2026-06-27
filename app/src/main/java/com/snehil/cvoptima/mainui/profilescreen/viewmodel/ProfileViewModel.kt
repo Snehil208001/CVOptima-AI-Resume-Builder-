@@ -12,6 +12,11 @@ import com.snehil.cvoptima.data.remote.ApiService
 import com.snehil.cvoptima.data.remote.model.ExperienceDto
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import com.snehil.cvoptima.data.remote.model.UserProfileDto
+import com.snehil.cvoptima.domain.repository.TokenRepository
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -20,6 +25,7 @@ class ProfileViewModel @Inject constructor(
     private val experienceDao: ExperienceDao,
     private val educationDao: EducationDao,
     private val skillDao: SkillDao,
+    private val tokenRepository: TokenRepository,
     private val apiService: ApiService
 ) : ViewModel() {
 
@@ -28,8 +34,29 @@ class ProfileViewModel @Inject constructor(
     val educationList: Flow<List<LocalEducation>> = educationDao.getByResumeIdFlow(1L)
     val skillList: Flow<List<LocalSkill>> = skillDao.getByResumeIdFlow(1L)
 
+    private val _userProfile = MutableStateFlow<UserProfileDto?>(null)
+    val userProfile: StateFlow<UserProfileDto?> = _userProfile.asStateFlow()
+
     init {
         pullProfileFromBackend()
+    }
+
+    fun logout(onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                // Clear local Room database caches
+                experienceDao.deleteByResumeId(1L)
+                educationDao.deleteByResumeId(1L)
+                skillDao.deleteByResumeId(1L)
+                
+                // Clear authentication token
+                tokenRepository.clearToken()
+                
+                onSuccess()
+            } catch (e: Exception) {
+                // Handle logout exception
+            }
+        }
     }
 
     // Seeding/Syncing database from backend profile details on startup
@@ -37,6 +64,7 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val profile = apiService.getProfile()
+                _userProfile.value = profile
 
                 // Sync experiences
                 profile.experiences?.let { expDtos ->
@@ -50,6 +78,9 @@ class ProfileViewModel @Inject constructor(
                             endDate = dto.endDate,
                             isCurrentRole = dto.isCurrentRole,
                             description = dto.description,
+                            location = dto.location,
+                            type = dto.type,
+                            bulletPoints = dto.bulletPoints ?: emptyList(),
                             resumeId = 1L
                         )
                     }
@@ -68,6 +99,8 @@ class ProfileViewModel @Inject constructor(
                             startDate = dto.startDate,
                             endDate = dto.endDate,
                             gpa = dto.gpa,
+                            score = dto.score,
+                            location = dto.location,
                             resumeId = 1L
                         )
                     }
@@ -75,15 +108,17 @@ class ProfileViewModel @Inject constructor(
                 }
 
                 // Sync skills
-                profile.skills?.let { skDtos ->
+                profile.skillGroups?.let { groups ->
                     skillDao.deleteByResumeId(1L)
-                    val skEntities = skDtos.map { dto ->
-                        LocalSkill(
-                            id = dto.id ?: 0L,
-                            name = dto.name,
-                            proficiencyLevel = dto.proficiencyLevel,
-                            resumeId = 1L
-                        )
+                    val skEntities = groups.flatMap { g ->
+                        g.skills?.map { name ->
+                            LocalSkill(
+                                id = 0L,
+                                name = name,
+                                proficiencyLevel = null,
+                                resumeId = 1L
+                            )
+                        } ?: emptyList()
                     }
                     skillDao.insertAll(skEntities)
                 }
@@ -112,6 +147,9 @@ class ProfileViewModel @Inject constructor(
                 endDate = endDate,
                 isCurrentRole = isCurrentRole,
                 description = description,
+                location = null,
+                type = null,
+                bulletPoints = emptyList(),
                 resumeId = 1L
             )
 
@@ -131,7 +169,10 @@ class ProfileViewModel @Inject constructor(
                     startDate = startDate,
                     endDate = endDate,
                     isCurrentRole = isCurrentRole,
-                    description = description
+                    description = description,
+                    location = null,
+                    type = null,
+                    bulletPoints = null
                 )
                 apiService.saveExperience(syncDto)
             } catch (e: Exception) {

@@ -43,6 +43,31 @@ The project follows a split-module structure:
 
 ---
 
+## 📸 App Walkthrough & Screenshots
+
+### 🏠 Home Screen & ATS Card
+The dashboard features a clean, professional design with a dynamic greeting card and the **AI ATS Compatibility Analyzer**. Users can choose to analyze their compiled profile directly or scan an external PDF resume.
+
+<p align="center">
+  <img src="assets/homescreen_no_resumes.png" alt="Home Screen & ATS Uploader" width="320"/>
+</p>
+
+### 📄 Profile ATS Compatibility Report
+An interactive evaluation bottom-sheet showing an animated score gauge and segmented feedback cards for Layout Compliance, Keywords, Metrics, and Action Verbs.
+
+<p align="center">
+  <img src="assets/ats_compatibility_report_40.png" alt="Profile ATS Compatibility Report" width="320"/>
+</p>
+
+### 📈 Uploaded PDF ATS Report
+Selecting a PDF launches the local extractor, scans the file, and presents the identical high-fidelity ATS Report layout displaying compatibility scores and suggestions.
+
+<p align="center">
+  <img src="assets/ats_pdf_report_85.png" alt="Uploaded PDF ATS Report" width="320"/>
+</p>
+
+---
+
 ## 🛠️ Technology Stack & Architecture
 
 ### Client-Side (Android)

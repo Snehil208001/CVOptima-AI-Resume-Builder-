@@ -51,7 +51,7 @@ class AiResumeControllerTest {
                 .build();
 
         String fakeTaskId = "123e4567-e89b-12d3-a456-426614174000";
-        when(aiResumeService.startOptimizationTask(any(ExperienceOptimizationRequest.class))).thenReturn(fakeTaskId);
+        when(aiResumeService.startOptimizationTask(any(ExperienceOptimizationRequest.class), any())).thenReturn(fakeTaskId);
 
         mockMvc.perform(post("/api/v1/ai/optimize")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -84,7 +84,7 @@ class AiResumeControllerTest {
                 .targetJobDescription("valid jd")
                 .build();
 
-        when(aiResumeService.startOptimizationTask(any(ExperienceOptimizationRequest.class)))
+        when(aiResumeService.startOptimizationTask(any(ExperienceOptimizationRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("Service execution failed due to invalid arguments"));
 
         mockMvc.perform(post("/api/v1/ai/optimize")

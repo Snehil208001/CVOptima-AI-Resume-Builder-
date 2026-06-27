@@ -12,10 +12,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+import com.resumebuilder.backend.repository.UserRepository;
+
 class AiResumeServiceTest {
 
     private ChatClient.Builder chatClientBuilder;
     private ChatClient chatClient;
+    private UserRepository userRepository;
     private AiResumeService aiResumeService;
 
     @BeforeEach
@@ -23,9 +26,10 @@ class AiResumeServiceTest {
         chatClientBuilder = mock(ChatClient.Builder.class);
         // Using deep stubs to easily mock the fluent ChatClient API
         chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
+        userRepository = mock(UserRepository.class);
 
         when(chatClientBuilder.build()).thenReturn(chatClient);
-        aiResumeService = new AiResumeService(chatClientBuilder);
+        aiResumeService = new AiResumeService(chatClientBuilder, userRepository, "valid-test-key-preventing-fallback");
     }
 
     @Test

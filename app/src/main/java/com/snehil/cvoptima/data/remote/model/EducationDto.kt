@@ -9,5 +9,7 @@ data class EducationDto(
     @SerializedName("fieldOfStudy") val fieldOfStudy: String?,
     @SerializedName("startDate") val startDate: String?,
     @SerializedName("endDate") val endDate: String?,
-    @SerializedName("gpa") val gpa: Double?
+    @SerializedName("gpa") val gpa: Double?,
+    @SerializedName("score") val score: String? = null,
+    @SerializedName("location") val location: String? = null
 )

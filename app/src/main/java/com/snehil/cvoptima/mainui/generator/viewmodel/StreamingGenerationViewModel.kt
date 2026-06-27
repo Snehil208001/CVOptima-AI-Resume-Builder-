@@ -1,9 +1,16 @@
 package com.snehil.cvoptima.mainui.generator.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.snehil.cvoptima.core.di.NetworkModule
+import com.snehil.cvoptima.data.local.dao.*
+import com.snehil.cvoptima.data.remote.model.*
+import com.snehil.cvoptima.mainui.generator.ResumePdfExporter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -14,7 +21,14 @@ import javax.inject.Inject
 
 @HiltViewModel
 class StreamingGenerationViewModel @Inject constructor(
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    private val basicInfoDao: BasicInfoDao,
+    private val educationDao: EducationDao,
+    private val experienceDao: ExperienceDao,
+    private val skillGroupDao: SkillGroupDao,
+    private val projectDao: ProjectDao,
+    private val certificationDao: CertificationDao,
+    private val layoutSettingsDao: LayoutSettingsDao
 ) : ViewModel() {
 
     private val _streamedText = MutableStateFlow("")
@@ -36,7 +50,7 @@ class StreamingGenerationViewModel @Inject constructor(
         _error.value = null
 
         val request = Request.Builder()
-            .url("http://10.0.2.2:8080/api/v1/ai/optimize/$taskId/stream")
+            .url("${NetworkModule.BASE_URL}api/v1/ai/optimize/$taskId/stream")
             .header("Accept", "text/event-stream")
             .build()
 
@@ -74,6 +88,96 @@ class StreamingGenerationViewModel @Inject constructor(
 
         val sseFactory = EventSources.createFactory(okHttpClient)
         eventSource = sseFactory.newEventSource(request, listener)
+    }
+
+    fun downloadPdf(context: Context, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            try {
+                // Compile the UserProfileDto from local Room DB
+                val basicInfo = basicInfoDao.getByResumeId(1L)
+                val edus = educationDao.getByResumeId(1L)
+                val exps = experienceDao.getByResumeId(1L)
+                val sgs = skillGroupDao.getByResumeId(1L)
+                val projs = projectDao.getByResumeId(1L)
+                val certs = certificationDao.getByResumeId(1L)
+                val layout = layoutSettingsDao.getByResumeId(1L)
+
+                val profileDto = UserProfileDto(
+                    username = "default_user",
+                    email = basicInfo?.email ?: "user@example.com",
+                    name = basicInfo?.name ?: "Compiled Resume",
+                    contactNumber = basicInfo?.contactNumber,
+                    linkedinUrl = basicInfo?.linkedinUrl,
+                    githubUrl = basicInfo?.githubUrl,
+                    portfolioUrl = basicInfo?.portfolioUrl,
+                    professionalSummary = basicInfo?.professionalSummary,
+                    experiences = exps.map {
+                        ExperienceDto(
+                            id = it.id,
+                            company = it.company,
+                            title = it.title,
+                            startDate = it.startDate,
+                            endDate = it.endDate,
+                            isCurrentRole = it.isCurrentRole,
+                            description = it.description,
+                            location = it.location,
+                            type = it.type,
+                            bulletPoints = it.bulletPoints
+                        )
+                    },
+                    educations = edus.map {
+                        EducationDto(
+                            id = it.id,
+                            institution = it.institution,
+                            degree = it.degree,
+                            fieldOfStudy = it.fieldOfStudy,
+                            startDate = it.startDate,
+                            endDate = it.endDate,
+                            gpa = it.gpa,
+                            score = it.score,
+                            location = it.location
+                        )
+                    },
+                    skillGroups = sgs.map {
+                        SkillGroupDto(
+                            id = it.id,
+                            label = it.label,
+                            skills = it.skills
+                        )
+                    },
+                    projects = projs.map {
+                        ProjectDto(
+                            id = it.id,
+                            title = it.title,
+                            link = it.link,
+                            date = it.date,
+                            techStack = it.techStack,
+                            bulletPoints = it.bulletPoints
+                        )
+                    },
+                    certifications = certs.map {
+                        CertificationDto(
+                            id = it.id,
+                            title = it.title,
+                            issuer = it.issuer,
+                            link = it.link,
+                            date = it.date,
+                            bulletPoints = it.bulletPoints
+                        )
+                    },
+                    layoutConfig = LayoutConfigDto(
+                        layoutDensity = layout?.layoutDensity ?: "Normal",
+                        sectionOrder = layout?.sectionOrder ?: listOf("Skills", "Work Experiences", "Projects", "Certifications")
+                    )
+                )
+
+                val success = ResumePdfExporter.exportPdf(context, profileDto)
+                onComplete(success)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(false)
+            }
+        }
     }
 
     override fun onCleared() {

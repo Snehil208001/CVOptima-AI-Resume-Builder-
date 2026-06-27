@@ -27,9 +27,11 @@ public class AiResumeController {
 
     @PostMapping("/optimize")
     public ResponseEntity<ExperienceOptimizationResponse> optimizeExperience(
+            java.security.Principal principal,
             @Valid @RequestBody ExperienceOptimizationRequest request) {
         
-        String taskId = aiResumeService.startOptimizationTask(request);
+        String username = principal != null ? principal.getName() : null;
+        String taskId = aiResumeService.startOptimizationTask(request, username);
 
         ExperienceOptimizationResponse response = ExperienceOptimizationResponse.builder()
                 .taskId(taskId)

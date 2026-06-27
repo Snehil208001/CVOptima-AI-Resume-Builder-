@@ -26,6 +26,12 @@ public class UserProfileDTO {
 
     private String firstName;
     private String lastName;
+    private String name;
+    private String contactNumber;
+    private String linkedinUrl;
+    private String githubUrl;
+    private String portfolioUrl;
+    private String professionalSummary;
 
     @Valid
     private List<ExperienceDTO> experiences;
@@ -34,5 +40,14 @@ public class UserProfileDTO {
     private List<EducationDTO> educations;
 
     @Valid
-    private List<SkillDTO> skills;
+    private List<SkillGroupDTO> skillGroups;
+
+    @Valid
+    private List<ProjectDTO> projects;
+
+    @Valid
+    private List<CertificationDTO> certifications;
+
+    @Valid
+    private LayoutConfigDTO layoutConfig;
 }

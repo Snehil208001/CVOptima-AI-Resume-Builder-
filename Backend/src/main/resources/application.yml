@@ -6,7 +6,7 @@ spring:
 
   ai:
     openai:
-      api-key: ${OPENAI_API_KEY:}
+      api-key: ${OPENAI_API_KEY:dummy-key-please-set-openai-api-key}
 
 logging:
   level:

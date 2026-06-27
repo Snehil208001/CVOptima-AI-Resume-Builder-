@@ -13,7 +13,7 @@ import com.snehil.cvoptima.mainui.splashscreen.ui.SplashScreen
 import com.snehil.cvoptima.mainui.loginscreen.ui.LoginScreen
 import com.snehil.cvoptima.mainui.registerscreen.ui.RegisterScreen
 import com.snehil.cvoptima.mainui.homescreen.ui.HomeScreen
-import com.snehil.cvoptima.mainui.profilescreen.ui.ProfileEditorScreen
+import com.snehil.cvoptima.ui.screen.editor.ResumeEditorScreen
 import com.snehil.cvoptima.mainui.generator.ui.JobInputScreen
 import com.snehil.cvoptima.mainui.generator.ui.StreamingGenerationScreen
 import androidx.navigation.navArgument
@@ -40,13 +40,16 @@ fun SetupNavGraph(
             HomeScreen(navController = navController)
         }
         composable(Screen.ProfileEditor.route) {
-            ProfileEditorScreen(navController = navController)
+            ResumeEditorScreen(navController = navController)
         }
         composable(Screen.JobInput.route) {
             JobInputScreen(navController = navController)
         }
         composable(Screen.Apply.route) {
             JobInputScreen(navController = navController)
+        }
+        composable(Screen.ResumePreview.route) {
+            com.snehil.cvoptima.ui.screen.preview.ResumePreviewScreen(navController = navController)
         }
         composable(
             route = Screen.Progress.route,

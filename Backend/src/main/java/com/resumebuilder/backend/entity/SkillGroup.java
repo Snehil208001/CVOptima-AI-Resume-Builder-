@@ -3,27 +3,32 @@ package com.resumebuilder.backend.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 @Entity
-@Table(name = "skills")
+@Table(name = "skill_groups")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 @ToString(exclude = "resume")
-public class Skill {
+public class SkillGroup {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
-    private String name;
+    private String label;
 
-    @Column(name = "proficiency_level")
-    private String proficiencyLevel; // e.g. "Beginner", "Intermediate", "Advanced", "Expert"
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "skill_group_items", joinColumns = @JoinColumn(name = "skill_group_id"))
+    @Column(name = "skill_item")
+    @Builder.Default
+    private List<String> skills = new ArrayList<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "resume_id", nullable = false)
@@ -33,8 +38,8 @@ public class Skill {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        Skill skill = (Skill) o;
-        return id != null && Objects.equals(id, skill.id);
+        SkillGroup that = (SkillGroup) o;
+        return id != null && Objects.equals(id, that.id);
     }
 
     @Override

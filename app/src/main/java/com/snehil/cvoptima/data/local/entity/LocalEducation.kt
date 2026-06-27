@@ -13,5 +13,7 @@ data class LocalEducation(
     @ColumnInfo(name = "start_date") val startDate: String?,
     @ColumnInfo(name = "end_date") val endDate: String?,
     val gpa: Double?,
+    val score: String?,
+    val location: String?,
     @ColumnInfo(name = "resume_id") val resumeId: Long
 )

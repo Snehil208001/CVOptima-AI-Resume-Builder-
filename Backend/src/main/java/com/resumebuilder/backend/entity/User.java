@@ -36,6 +36,24 @@ public class User {
     @Column(name = "last_name")
     private String lastName;
 
+    @Column(name = "name")
+    private String name;
+
+    @Column(name = "contact_number")
+    private String contactNumber;
+
+    @Column(name = "linkedin_url")
+    private String linkedinUrl;
+
+    @Column(name = "github_url")
+    private String githubUrl;
+
+    @Column(name = "portfolio_url")
+    private String portfolioUrl;
+
+    @Column(name = "professional_summary", columnDefinition = "TEXT")
+    private String professionalSummary;
+
     @Builder.Default
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Resume> resumes = new ArrayList<>();

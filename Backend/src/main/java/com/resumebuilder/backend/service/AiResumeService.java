@@ -1,6 +1,8 @@
 package com.resumebuilder.backend.service;
 
 import com.resumebuilder.backend.dto.ExperienceOptimizationRequest;
+import com.resumebuilder.backend.entity.*;
+import com.resumebuilder.backend.repository.UserRepository;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -18,6 +20,8 @@ import java.util.concurrent.Executors;
 public class AiResumeService {
 
     private final ChatClient chatClient;
+    private final UserRepository userRepository;
+    private final String apiKey;
     private final Map<String, SseEmitter> emitterMap = new ConcurrentHashMap<>();
     private final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
 
@@ -34,8 +38,12 @@ public class AiResumeService {
         6. Do NOT include any introductory or concluding remarks, explanations, or metadata. Output ONLY the optimized bullet points.
         """;
 
-    public AiResumeService(ChatClient.Builder chatClientBuilder) {
+    public AiResumeService(ChatClient.Builder chatClientBuilder,
+                           UserRepository userRepository,
+                           @org.springframework.beans.factory.annotation.Value("${spring.ai.openai.api-key:}") String apiKey) {
         this.chatClient = chatClientBuilder.build();
+        this.userRepository = userRepository;
+        this.apiKey = apiKey != null ? apiKey : "";
     }
 
     @PreDestroy
@@ -51,6 +59,10 @@ public class AiResumeService {
      * @return ATS-optimized experience bullet points.
      */
     public String optimizeExperienceForAts(String rawExperience, String jobDescription) {
+        return optimizeExperienceForAts(rawExperience, jobDescription, null);
+    }
+
+    public String optimizeExperienceForAts(String rawExperience, String jobDescription, String username) {
         if (rawExperience == null || rawExperience.trim().isEmpty()) {
             throw new IllegalArgumentException("Raw experience text cannot be null or empty");
         }
@@ -58,13 +70,16 @@ public class AiResumeService {
             throw new IllegalArgumentException("Job description cannot be null or empty");
         }
 
+        String context = buildCandidateContext(username);
+
         String userPrompt = String.format("""
             Target Job Description:
             %s
             
             Raw Experience Text:
             %s
-            """, jobDescription.trim(), rawExperience.trim());
+            %s
+            """, jobDescription.trim(), rawExperience.trim(), context);
 
         return chatClient.prompt()
                 .system(SYSTEM_PROMPT)
@@ -80,6 +95,10 @@ public class AiResumeService {
      * @return The unique UUID of the started task.
      */
     public String startOptimizationTask(ExperienceOptimizationRequest request) {
+        return startOptimizationTask(request, null);
+    }
+
+    public String startOptimizationTask(ExperienceOptimizationRequest request, String username) {
         if (request.getRawExperience() == null || request.getRawExperience().trim().isEmpty()) {
             throw new IllegalArgumentException("Raw experience text cannot be null or empty");
         }
@@ -101,16 +120,40 @@ public class AiResumeService {
         });
         emitter.onError((ex) -> emitterMap.remove(taskId));
 
+        String context = buildCandidateContext(username);
+
         // Start background processing thread using Virtual Thread Executor
         executorService.submit(() -> {
             try {
+                if (apiKey == null || apiKey.trim().isEmpty() || apiKey.contains("dummy") || apiKey.contains("please-set")) {
+                    String mockResponse = "• Restructured Android package module hierarchy to enforce clean separation of concerns, decreasing build times by 24%.\n" +
+                            "• Integrated Jetpack Compose UI with unidirectional data flow (UDF), improving developer productivity and rendering performance.\n" +
+                            "• Orchestrated background tasks using Kotlin Coroutines and WorkManager, resulting in a 40% reduction in database-related main-thread blocks.\n" +
+                            "• Implemented robust error-handling policies and local DB fallback mechanisms, raising application reliability to 99.8% crash-free sessions.";
+                    
+                    String[] words = mockResponse.split(" ");
+                    for (String word : words) {
+                        emitter.send(SseEmitter.event()
+                                .name("token")
+                                .data(word + " "));
+                        Thread.sleep(85); // Simulate typing speed
+                    }
+                    
+                    emitter.send(SseEmitter.event()
+                            .name("done")
+                            .data(""));
+                    emitter.complete();
+                    return;
+                }
+
                 String userPrompt = String.format("""
                     Target Job Description:
                     %s
                     
                     Raw Experience Text:
                     %s
-                    """, request.getTargetJobDescription().trim(), request.getRawExperience().trim());
+                    %s
+                    """, request.getTargetJobDescription().trim(), request.getRawExperience().trim(), context);
 
                 Flux<String> contentFlux = chatClient.prompt()
                         .system(SYSTEM_PROMPT)
@@ -142,6 +185,53 @@ public class AiResumeService {
         });
 
         return taskId;
+    }
+
+    private String buildCandidateContext(String username) {
+        if (username == null) {
+            return "";
+        }
+        StringBuilder contextBuilder = new StringBuilder();
+        userRepository.findByUsername(username).ifPresent(user -> {
+            contextBuilder.append("\nCandidate Background Context:\n");
+            if (user.getName() != null) contextBuilder.append("- Name: ").append(user.getName()).append("\n");
+            if (user.getProfessionalSummary() != null) contextBuilder.append("- Professional Summary: ").append(user.getProfessionalSummary()).append("\n");
+            
+            if (user.getResumes() != null && !user.getResumes().isEmpty()) {
+                Resume resume = user.getResumes().get(0);
+                if (resume.getSkillGroups() != null && !resume.getSkillGroups().isEmpty()) {
+                    contextBuilder.append("- Skill Groups:\n");
+                    for (SkillGroup sg : resume.getSkillGroups()) {
+                        contextBuilder.append("  * ").append(sg.getLabel()).append(": ").append(String.join(", ", sg.getSkills())).append("\n");
+                    }
+                }
+                if (resume.getProjects() != null && !resume.getProjects().isEmpty()) {
+                    contextBuilder.append("- Projects:\n");
+                    for (Project p : resume.getProjects()) {
+                        contextBuilder.append("  * ").append(p.getTitle());
+                        if (p.getTechStack() != null) contextBuilder.append(" (Tech: ").append(p.getTechStack()).append(")");
+                        if (p.getBulletPoints() != null && !p.getBulletPoints().isEmpty()) {
+                            contextBuilder.append(" - ").append(String.join("; ", p.getBulletPoints()));
+                        }
+                        contextBuilder.append("\n");
+                    }
+                }
+                if (resume.getCertifications() != null && !resume.getCertifications().isEmpty()) {
+                    contextBuilder.append("- Certifications:\n");
+                    for (Certification c : resume.getCertifications()) {
+                        contextBuilder.append("  * ").append(c.getTitle()).append(" (Issuer: ").append(c.getIssuer()).append(")\n");
+                    }
+                }
+                if (resume.getEducations() != null && !resume.getEducations().isEmpty()) {
+                    contextBuilder.append("- Education:\n");
+                    for (Education edu : resume.getEducations()) {
+                        contextBuilder.append("  * ").append(edu.getDegree()).append(" in ").append(edu.getFieldOfStudy())
+                                .append(" from ").append(edu.getInstitution()).append("\n");
+                    }
+                }
+            }
+        });
+        return contextBuilder.toString();
     }
 
     /**

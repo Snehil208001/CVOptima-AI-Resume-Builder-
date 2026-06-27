@@ -9,5 +9,8 @@ data class ExperienceDto(
     @SerializedName("startDate") val startDate: String?,
     @SerializedName("endDate") val endDate: String?,
     @SerializedName("isCurrentRole") val isCurrentRole: Boolean,
-    @SerializedName("description") val description: String?
+    @SerializedName("description") val description: String?,
+    @SerializedName("location") val location: String? = null,
+    @SerializedName("type") val type: String? = null,
+    @SerializedName("bulletPoints") val bulletPoints: List<String>? = null
 )

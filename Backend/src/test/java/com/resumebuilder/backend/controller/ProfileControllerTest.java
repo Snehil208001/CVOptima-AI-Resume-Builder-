@@ -1,20 +1,9 @@
 package com.resumebuilder.backend.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.resumebuilder.backend.dto.EducationDTO;
-import com.resumebuilder.backend.dto.ExperienceDTO;
-import com.resumebuilder.backend.dto.SkillDTO;
-import com.resumebuilder.backend.dto.UserProfileDTO;
-import com.resumebuilder.backend.entity.Education;
-import com.resumebuilder.backend.entity.Experience;
-import com.resumebuilder.backend.entity.Resume;
-import com.resumebuilder.backend.entity.Skill;
-import com.resumebuilder.backend.entity.User;
-import com.resumebuilder.backend.repository.EducationRepository;
-import com.resumebuilder.backend.repository.ExperienceRepository;
-import com.resumebuilder.backend.repository.ResumeRepository;
-import com.resumebuilder.backend.repository.SkillRepository;
-import com.resumebuilder.backend.repository.UserRepository;
+import com.resumebuilder.backend.dto.*;
+import com.resumebuilder.backend.entity.*;
+import com.resumebuilder.backend.repository.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -71,7 +60,16 @@ class ProfileControllerTest {
     private EducationRepository educationRepository;
 
     @MockBean
-    private SkillRepository skillRepository;
+    private SkillGroupRepository skillGroupRepository;
+
+    @MockBean
+    private ProjectRepository projectRepository;
+
+    @MockBean
+    private CertificationRepository certificationRepository;
+
+    @MockBean
+    private LayoutConfigRepository layoutConfigRepository;
 
     @Test
     void testGetProfile_Success() throws Exception {
@@ -90,7 +88,7 @@ class ProfileControllerTest {
                 .user(user)
                 .experiences(new ArrayList<>())
                 .educations(new ArrayList<>())
-                .skills(new ArrayList<>())
+                .skillGroups(new ArrayList<>())
                 .build();
         user.addResume(resume);
 
@@ -112,13 +110,13 @@ class ProfileControllerTest {
                 .build();
         resume.addEducation(edu);
 
-        Skill skill = Skill.builder()
+        SkillGroup skillGroup = SkillGroup.builder()
                 .id(1L)
-                .name("Java")
-                .proficiencyLevel("Expert")
+                .label("Languages")
+                .skills(Collections.singletonList("Java"))
                 .resume(resume)
                 .build();
-        resume.addSkill(skill);
+        resume.addSkillGroup(skillGroup);
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
 
@@ -133,7 +131,8 @@ class ProfileControllerTest {
                 .andExpect(jsonPath("$.experiences[0].title").value("Software Engineer"))
                 .andExpect(jsonPath("$.educations[0].institution").value("MIT"))
                 .andExpect(jsonPath("$.educations[0].degree").value("MS"))
-                .andExpect(jsonPath("$.skills[0].name").value("Java"));
+                .andExpect(jsonPath("$.skillGroups[0].label").value("Languages"))
+                .andExpect(jsonPath("$.skillGroups[0].skills[0]").value("Java"));
     }
 
     @Test
@@ -153,7 +152,7 @@ class ProfileControllerTest {
                 .user(user)
                 .experiences(new ArrayList<>())
                 .educations(new ArrayList<>())
-                .skills(new ArrayList<>())
+                .skillGroups(new ArrayList<>())
                 .build();
         user.addResume(resume);
 
@@ -177,10 +176,10 @@ class ProfileControllerTest {
                                 .degree("PhD")
                                 .build()
                 ))
-                .skills(Collections.singletonList(
-                        SkillDTO.builder()
-                                .name("Go")
-                                .proficiencyLevel("Advanced")
+                .skillGroups(Collections.singletonList(
+                        SkillGroupDTO.builder()
+                                .label("Backend Core Skills")
+                                .skills(Collections.singletonList("Go"))
                                 .build()
                 ))
                 .build();
@@ -195,7 +194,8 @@ class ProfileControllerTest {
                 .andExpect(jsonPath("$.lastName").value("Doey"))
                 .andExpect(jsonPath("$.experiences[0].company").value("Meta"))
                 .andExpect(jsonPath("$.educations[0].institution").value("Stanford"))
-                .andExpect(jsonPath("$.skills[0].name").value("Go"));
+                .andExpect(jsonPath("$.skillGroups[0].label").value("Backend Core Skills"))
+                .andExpect(jsonPath("$.skillGroups[0].skills[0]").value("Go"));
     }
 
     @Test
@@ -297,28 +297,7 @@ class ProfileControllerTest {
                 .andExpect(jsonPath("$.message").value("Experience with ID 99 not found"));
     }
 
-    @Test
-    void testUpdateSkills_Success() throws Exception {
-        User user = User.builder().id(1L).resumes(new ArrayList<>()).build();
-        Resume resume = Resume.builder().id(1L).user(user).skills(new ArrayList<>()).build();
-        user.addResume(resume);
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-        when(resumeRepository.save(any(Resume.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(skillRepository.findByResumeId(any())).thenReturn(new ArrayList<>());
-        when(skillRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
-
-        java.util.List<SkillDTO> skills = Collections.singletonList(
-                SkillDTO.builder().name("Java").proficiencyLevel("Expert").build()
-        );
-
-        mockMvc.perform(patch("/api/v1/profile/skills")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(skills)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].name").value("Java"))
-                .andExpect(jsonPath("$[0].proficiencyLevel").value("Expert"));
-    }
 
     @Test
     void testDeleteExperience_Success() throws Exception {

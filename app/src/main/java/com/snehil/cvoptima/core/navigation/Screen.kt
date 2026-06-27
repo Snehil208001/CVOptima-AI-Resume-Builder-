@@ -8,6 +8,7 @@ sealed class Screen(val route: String) {
     object ProfileEditor : Screen("profile_editor")
     object JobInput : Screen("job_input")
     object Apply : Screen("apply")
+    object ResumePreview : Screen("resume_preview")
     object Progress : Screen("progress/{taskId}") {
         fun createRoute(taskId: String) = "progress/$taskId"
     }

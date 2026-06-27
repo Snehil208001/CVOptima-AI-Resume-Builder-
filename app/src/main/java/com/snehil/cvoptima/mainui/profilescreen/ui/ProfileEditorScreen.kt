@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -32,6 +33,7 @@ import com.snehil.cvoptima.data.local.entity.LocalExperience
 import com.snehil.cvoptima.data.local.entity.LocalSkill
 import com.snehil.cvoptima.mainui.profilescreen.viewmodel.ProfileViewModel
 import com.snehil.cvoptima.ui.components.AppBottomNavigationBar
+import com.snehil.cvoptima.data.remote.model.UserProfileDto
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +44,7 @@ fun ProfileEditorScreen(
     val experiences by viewModel.experienceList.collectAsState(initial = emptyList())
     val educations by viewModel.educationList.collectAsState(initial = emptyList())
     val skills by viewModel.skillList.collectAsState(initial = emptyList())
+    val userProfile by viewModel.userProfile.collectAsState()
 
     var selectedTabIndex by remember { mutableStateOf(0) }
     val tabTitles = listOf("Experience", "Education", "Skills")
@@ -73,7 +76,18 @@ fun ProfileEditorScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Profile Header Card
-                ProfileHeaderCard()
+                ProfileHeaderCard(
+                    profile = userProfile,
+                    onLogoutClick = {
+                        viewModel.logout(
+                            onSuccess = {
+                                navController.navigate(Screen.Splash.route) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }
+                        )
+                    }
+                )
 
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -166,7 +180,22 @@ fun ProfileEditorScreen(
 }
 
 @Composable
-fun ProfileHeaderCard() {
+fun ProfileHeaderCard(profile: UserProfileDto?, onLogoutClick: () -> Unit) {
+    val displayName = if (profile != null) {
+        val first = profile.firstName ?: ""
+        val last = profile.lastName ?: ""
+        if (first.isNotEmpty() || last.isNotEmpty()) {
+            "$first $last".trim()
+        } else {
+            profile.username
+        }
+    } else {
+        "John Doe"
+    }
+
+    val displayEmail = profile?.email ?: "john.doe@gmail.com"
+    val initial = displayName.firstOrNull()?.toString()?.uppercase() ?: "J"
+
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
@@ -188,33 +217,52 @@ fun ProfileHeaderCard() {
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .background(MaterialTheme.colorScheme.primary, shape = CircleShape),
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text = "J",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .background(MaterialTheme.colorScheme.primary, shape = CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = initial,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
                         )
-                    )
+                    }
+
+                    Column {
+                        Text(
+                            text = displayName,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = displayEmail,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
+                    }
                 }
 
-                Column {
-                    Text(
-                        text = "John Doe",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                IconButton(
+                    onClick = onLogoutClick,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
                     )
-                    Text(
-                        text = "john.doe@gmail.com",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Logout,
+                        contentDescription = "Logout"
                     )
                 }
             }

@@ -25,4 +25,6 @@ public class EducationDTO {
     private LocalDate startDate;
     private LocalDate endDate;
     private Double gpa;
+    private String score;
+    private String location;
 }

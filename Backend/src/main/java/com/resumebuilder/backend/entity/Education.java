@@ -37,6 +37,12 @@ public class Education {
 
     private Double gpa;
 
+    @Column(name = "score")
+    private String score;
+
+    @Column(name = "location")
+    private String location;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "resume_id", nullable = false)
     private Resume resume;

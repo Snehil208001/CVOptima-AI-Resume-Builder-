@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -250,6 +252,7 @@ fun StreamingGenerationScreen(
                 }
 
                 // Success Confirmation and Navigation Action
+                val context = LocalContext.current
                 AnimatedVisibility(visible = isDone && error == null) {
                     Column(
                         modifier = Modifier
@@ -276,18 +279,46 @@ fun StreamingGenerationScreen(
                             )
                         }
 
-                        Button(
-                            onClick = {
-                                navController.navigate(Screen.Home.route) {
-                                    popUpTo(Screen.Home.route) { inclusive = true }
-                                }
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text("Back to Dashboard", fontWeight = FontWeight.Bold)
+                            Button(
+                                onClick = {
+                                    viewModel.downloadPdf(context) { success ->
+                                        if (success) {
+                                            android.widget.Toast.makeText(context, "PDF saved to Downloads folder!", android.widget.Toast.LENGTH_LONG).show()
+                                        } else {
+                                            android.widget.Toast.makeText(context, "Failed to export PDF", android.widget.Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1.2f)
+                                    .height(56.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondary
+                                )
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Download PDF", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+
+                            Button(
+                                onClick = {
+                                    navController.navigate(Screen.Home.route) {
+                                        popUpTo(Screen.Home.route) { inclusive = true }
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(0.8f)
+                                    .height(56.dp)
+                            ) {
+                                Text("Dashboard", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
                         }
                     }
                 }

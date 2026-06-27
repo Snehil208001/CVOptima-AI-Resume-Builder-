@@ -14,7 +14,7 @@ import java.util.Objects;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ToString(exclude = {"user", "experiences", "educations", "skills"})
+@ToString(exclude = {"user", "experiences", "educations", "skillGroups", "projects", "certifications", "layoutConfig"})
 public class Resume {
 
     @Id
@@ -41,7 +41,18 @@ public class Resume {
 
     @Builder.Default
     @OneToMany(mappedBy = "resume", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Skill> skills = new ArrayList<>();
+    private List<SkillGroup> skillGroups = new ArrayList<>();
+
+    @Builder.Default
+    @OneToMany(mappedBy = "resume", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Project> projects = new ArrayList<>();
+
+    @Builder.Default
+    @OneToMany(mappedBy = "resume", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Certification> certifications = new ArrayList<>();
+
+    @OneToOne(mappedBy = "resume", cascade = CascadeType.ALL, orphanRemoval = true)
+    private LayoutConfig layoutConfig;
 
     // Bi-directional Experience helper methods
     public void addExperience(Experience experience) {
@@ -65,15 +76,45 @@ public class Resume {
         education.setResume(null);
     }
 
-    // Bi-directional Skill helper methods
-    public void addSkill(Skill skill) {
-        skills.add(skill);
-        skill.setResume(this);
+    // Bi-directional SkillGroup helper methods
+    public void addSkillGroup(SkillGroup skillGroup) {
+        skillGroups.add(skillGroup);
+        skillGroup.setResume(this);
     }
 
-    public void removeSkill(Skill skill) {
-        skills.remove(skill);
-        skill.setResume(null);
+    public void removeSkillGroup(SkillGroup skillGroup) {
+        skillGroups.remove(skillGroup);
+        skillGroup.setResume(null);
+    }
+
+    // Bi-directional Project helper methods
+    public void addProject(Project project) {
+        projects.add(project);
+        project.setResume(this);
+    }
+
+    public void removeProject(Project project) {
+        projects.remove(project);
+        project.setResume(null);
+    }
+
+    // Bi-directional Certification helper methods
+    public void addCertification(Certification certification) {
+        certifications.add(certification);
+        certification.setResume(this);
+    }
+
+    public void removeCertification(Certification certification) {
+        certifications.remove(certification);
+        certification.setResume(null);
+    }
+
+    // LayoutConfig helper methods
+    public void setLayoutConfig(LayoutConfig layoutConfig) {
+        this.layoutConfig = layoutConfig;
+        if (layoutConfig != null) {
+            layoutConfig.setResume(this);
+        }
     }
 
     @Override

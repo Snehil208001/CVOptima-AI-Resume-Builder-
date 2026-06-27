@@ -12,6 +12,9 @@ data class LocalExperience(
     @ColumnInfo(name = "start_date") val startDate: String?,
     @ColumnInfo(name = "end_date") val endDate: String?,
     @ColumnInfo(name = "is_current_role") val isCurrentRole: Boolean,
+    val location: String?,
+    val type: String?,
+    @ColumnInfo(name = "bullet_points") val bulletPoints: List<String>?,
     val description: String?,
     @ColumnInfo(name = "resume_id") val resumeId: Long
 )

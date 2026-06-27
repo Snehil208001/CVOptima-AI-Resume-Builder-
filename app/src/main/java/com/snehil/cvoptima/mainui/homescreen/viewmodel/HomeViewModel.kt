@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.snehil.cvoptima.domain.model.Document
 import com.snehil.cvoptima.domain.repository.DocumentRepository
+import com.snehil.cvoptima.data.remote.ApiService
+import com.snehil.cvoptima.data.remote.model.UserProfileDto
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,14 +22,30 @@ sealed interface HomeUiState {
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val documentRepository: DocumentRepository
+    private val documentRepository: DocumentRepository,
+    private val apiService: ApiService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    private val _userProfile = MutableStateFlow<UserProfileDto?>(null)
+    val userProfile: StateFlow<UserProfileDto?> = _userProfile.asStateFlow()
+
     init {
         loadDocuments()
+        loadUserProfile()
+    }
+
+    private fun loadUserProfile() {
+        viewModelScope.launch {
+            try {
+                val profile = apiService.getProfile()
+                _userProfile.value = profile
+            } catch (e: Exception) {
+                // Ignore and fall back to "Professional Builder"
+            }
+        }
     }
 
     fun loadDocuments() {

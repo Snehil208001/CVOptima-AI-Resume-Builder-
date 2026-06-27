@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import jakarta.validation.constraints.NotBlank;
 import java.time.LocalDate;
+import java.util.List;
 
 @Data
 @Builder
@@ -24,5 +25,8 @@ public class ExperienceDTO {
     private LocalDate startDate;
     private LocalDate endDate;
     private Boolean isCurrentRole;
+    private String location;
+    private String type;
+    private List<String> bulletPoints;
     private String description;
 }

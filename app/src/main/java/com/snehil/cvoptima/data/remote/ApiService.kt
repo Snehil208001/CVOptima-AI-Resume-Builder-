@@ -52,6 +52,11 @@ interface ApiService {
         @Body request: UserProfileDto
     ): UserProfileDto
 
+    @PUT("api/v1/profile/sync")
+    suspend fun syncProfile(
+        @Body request: UserProfileDto
+    ): UserProfileDto
+
     @PATCH("api/v1/profile/experience")
     suspend fun saveExperience(
         @Body request: ExperienceDto

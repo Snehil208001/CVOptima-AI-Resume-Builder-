@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 @Entity
@@ -34,6 +36,18 @@ public class Experience {
 
     @Column(name = "is_current_role")
     private Boolean isCurrentRole;
+
+    @Column(name = "location")
+    private String location;
+
+    @Column(name = "type")
+    private String type; // e.g. "Remote", "On-site", "Hybrid"
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "experience_bullets", joinColumns = @JoinColumn(name = "experience_id"))
+    @Column(name = "bullet_point", columnDefinition = "TEXT")
+    @Builder.Default
+    private List<String> bulletPoints = new ArrayList<>();
 
     @Column(columnDefinition = "TEXT")
     private String description;
