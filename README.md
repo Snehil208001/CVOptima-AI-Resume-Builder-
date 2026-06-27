@@ -49,7 +49,7 @@ The project follows a split-module structure:
 The dashboard features a clean, professional design with a dynamic greeting card and the **AI ATS Compatibility Analyzer**. Users can choose to analyze their compiled profile directly or scan an external PDF resume.
 
 <p align="center">
-  <img src="assets/homescreen_no_resumes.png" alt="Home Screen & ATS Uploader" width="320"/>
+  <img src="assets/homescreen_professional_builder.png" alt="Home Screen & ATS Uploader" width="320"/>
 </p>
 
 ### 📄 Profile ATS Compatibility Report
