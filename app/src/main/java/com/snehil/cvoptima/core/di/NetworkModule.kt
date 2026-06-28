@@ -2,12 +2,12 @@ package com.snehil.cvoptima.core.di
 
 import com.snehil.cvoptima.data.remote.ApiService
 import com.snehil.cvoptima.data.remote.AuthInterceptor
+import com.snehil.cvoptima.data.remote.ApiLoggingInterceptor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import javax.inject.Singleton
@@ -20,16 +20,14 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideHttpLoggingInterceptor(): HttpLoggingInterceptor {
-        return HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
+    fun provideApiLoggingInterceptor(): ApiLoggingInterceptor {
+        return ApiLoggingInterceptor()
     }
 
     @Provides
     @Singleton
     fun provideOkHttpClient(
-        loggingInterceptor: HttpLoggingInterceptor,
+        loggingInterceptor: ApiLoggingInterceptor,
         authInterceptor: AuthInterceptor
     ): OkHttpClient {
         return OkHttpClient.Builder()

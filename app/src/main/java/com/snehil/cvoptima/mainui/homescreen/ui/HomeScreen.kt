@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,13 +26,26 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.snehil.cvoptima.core.navigation.Screen
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.pdf.PdfRenderer
+import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.util.Log
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.snehil.cvoptima.core.util.PdfAtsAnalyzer
 import com.snehil.cvoptima.domain.model.Document
 import com.snehil.cvoptima.mainui.homescreen.viewmodel.HomeUiState
 import com.snehil.cvoptima.mainui.homescreen.viewmodel.HomeViewModel
 import com.snehil.cvoptima.ui.components.AppBottomNavigationBar
 import com.snehil.cvoptima.data.remote.model.UserProfileDto
 import java.util.Calendar
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,6 +64,7 @@ fun HomeScreen(
     var isScanningFile by remember { mutableStateOf(false) }
     var scanStatusText by remember { mutableStateOf("") }
     var showScanReport by remember { mutableStateOf(false) }
+    var atsResult by remember { mutableStateOf<PdfAtsAnalyzer.AtsAnalysisResult?>(null) }
     val scope = rememberCoroutineScope()
 
     val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -72,12 +87,71 @@ fun HomeScreen(
             showScanReport = false
             
             scope.launch {
-                scanStatusText = "Uploading: $name..."
-                kotlinx.coroutines.delay(1000)
-                scanStatusText = "Extracting layout format..."
-                kotlinx.coroutines.delay(1000)
-                scanStatusText = "Checking keywords & action verbs..."
-                kotlinx.coroutines.delay(1000)
+                scanStatusText = "Extracting text from PDF..."
+                
+                // Try to extract readable text from the PDF bytes
+                var extractedText = withContext(Dispatchers.Default) {
+                    try {
+                        val bytes = withContext(Dispatchers.IO) {
+                            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        } ?: byteArrayOf()
+                        extractTextFromPdfBytes(bytes)
+                    } catch (e: Exception) {
+                        Log.e("ATS_FLOW", "Digital text extraction failed on home screen", e)
+                        ""
+                    }
+                }
+
+                // If digital text extraction is too short or scrambled, run OCR fallback
+                val isTextValid = extractedText.length >= 50 && run {
+                    val lower = extractedText.lowercase()
+                    lower.contains("experience") || lower.contains("work") ||
+                    lower.contains("education") || lower.contains("degree") ||
+                    lower.contains("skills") || lower.contains("technologies") ||
+                    lower.contains("projects") || lower.contains("profile") ||
+                    lower.contains("contact")
+                }
+
+                if (!isTextValid) {
+                    Log.i("ATS_FLOW", "Digital text extraction returned short/scrambled text. Attempting OCR...")
+                    scanStatusText = "Running OCR scan on pages..."
+                    val ocrText = withContext(Dispatchers.Default) {
+                        try {
+                            extractTextViaOcr(context, uri)
+                        } catch (e: Exception) {
+                            Log.e("ATS_FLOW", "ML Kit OCR failed on home screen", e)
+                            ""
+                        }
+                    }
+                    if (ocrText.length >= 50) {
+                        extractedText = ocrText
+                    }
+                }
+
+                if (extractedText.length > 50) {
+                    scanStatusText = "AI is analyzing your resume..."
+                    val aiResponse = viewModel.analyzeTextWithAi(extractedText)
+                    if (aiResponse != null) {
+                        atsResult = PdfAtsAnalyzer.AtsAnalysisResult(
+                            score = aiResponse.score,
+                            rating = aiResponse.rating,
+                            layoutSuggestions = aiResponse.layoutSuggestions ?: emptyList(),
+                            keywordSuggestions = aiResponse.keywordSuggestions ?: emptyList(),
+                            metricSuggestions = aiResponse.metricSuggestions ?: emptyList(),
+                            verbSuggestions = aiResponse.verbSuggestions ?: emptyList()
+                        )
+                        Log.i("ATS_FLOW", "HomeScreen ATS Compatibility Result (AI-POWERED): $atsResult")
+                        isScanningFile = false
+                        showScanReport = true
+                        return@launch
+                    }
+                }
+
+                // Fallback to local visual-based analysis
+                scanStatusText = "Running local ATS scan..."
+                val result = PdfAtsAnalyzer.analyze(context, uri, name)
+                atsResult = result
+                Log.i("ATS_FLOW", "HomeScreen ATS Compatibility Result (LOCAL FALLBACK): $atsResult")
                 isScanningFile = false
                 showScanReport = true
             }
@@ -123,7 +197,16 @@ fun HomeScreen(
                     .padding(horizontal = 20.dp)
             ) {
                 // 1. Top Greeting Bar
-                GreetingHeader(userProfile)
+                GreetingHeader(
+                    profile = userProfile,
+                    onLogoutClick = {
+                        viewModel.logout {
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    }
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -178,6 +261,27 @@ fun HomeScreen(
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                MainResumeCard(
+                    userProfile = userProfile,
+                    onEditClick = { navController.navigate(Screen.ProfileEditor.route) },
+                    onDownloadClick = {
+                        viewModel.downloadMainPdf(context) { success ->
+                            if (success) {
+                                android.widget.Toast.makeText(context, "LaTeX Resume saved to Downloads!", android.widget.Toast.LENGTH_LONG).show()
+                            } else {
+                                android.widget.Toast.makeText(context, "Failed to export LaTeX Resume", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    onResetClick = {
+                        viewModel.clearResumeData {
+                            android.widget.Toast.makeText(context, "Resume data cleared successfully", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -236,7 +340,24 @@ fun HomeScreen(
     if (selectedDocument != null) {
         DocumentDetailsDialog(
             document = selectedDocument!!,
-            onDismiss = { selectedDocument = null }
+            onDismiss = { selectedDocument = null },
+            onSave = { jobTitle, companyName, resumeMd ->
+                viewModel.updateDocument(selectedDocument!!.id, jobTitle, companyName, resumeMd)
+                selectedDocument = null
+            },
+            onDelete = {
+                viewModel.deleteDocument(selectedDocument!!.id)
+                selectedDocument = null
+            },
+            onDownload = {
+                viewModel.downloadTailoredPdf(context, selectedDocument!!) { success ->
+                    if (success) {
+                        android.widget.Toast.makeText(context, "Tailored PDF saved to Downloads!", android.widget.Toast.LENGTH_LONG).show()
+                    } else {
+                        android.widget.Toast.makeText(context, "Failed to export PDF", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
         )
     }
 
@@ -278,7 +399,7 @@ fun HomeScreen(
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
                     .padding(horizontal = 24.dp, vertical = 16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
@@ -332,16 +453,17 @@ fun HomeScreen(
                                 useCenter = false,
                                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 8.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
                             )
+                            val currentScore = atsResult?.score ?: 85
                             drawArc(
                                 color = scoreColor,
                                 startAngle = 140f,
-                                sweepAngle = (85f / 100f) * 260f,
+                                sweepAngle = (currentScore / 100f) * 260f,
                                 useCenter = false,
                                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 8.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
                             )
                         }
                         Text(
-                            text = "85%",
+                            text = "${atsResult?.score ?: 85}%",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
                     }
@@ -350,13 +472,14 @@ fun HomeScreen(
 
                     Column {
                         Text(
-                            text = "Highly ATS Compatible",
+                            text = atsResult?.rating ?: "Highly ATS Compatible",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "PDF single-column formatting is perfect. Standard fonts and clean margins detected.",
+                            text = atsResult?.layoutSuggestions?.firstOrNull()
+                                ?: "PDF layout analysed successfully.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -384,12 +507,19 @@ fun HomeScreen(
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                val pdfSuggestions = listOf(
-                    Pair("ATS Parser Layout", "Perfect standard styling: Single-column tableless design detected. Reading order is logical."),
-                    Pair("Industry Keywords", "Add specific framework versions (e.g. 'Compose 1.6', 'Spring Boot 3.2') to matching target job criteria."),
-                    Pair("Metrics & Outcomes", "Identified 2 experience bullets missing quantified results. Consider using percentages for business outcomes."),
-                    Pair("Power Verbs", "Excellent action verb usage, but ensure they are in the past tense for previous roles.")
-                )
+                val result = atsResult
+                val pdfSuggestions = if (result != null) {
+                    buildList {
+                        result.layoutSuggestions.forEach { add(Pair("Layout & Format", it)) }
+                        result.keywordSuggestions.forEach { add(Pair("Keywords & Content", it)) }
+                        result.metricSuggestions.forEach { add(Pair("Metrics & Impact", it)) }
+                        result.verbSuggestions.forEach { add(Pair("Power Verbs", it)) }
+                    }
+                } else {
+                    listOf(
+                        Pair("ATS Parser Layout", "Unable to analyse PDF. Please ensure the file is a valid, non-encrypted PDF."),
+                    )
+                }
 
                 pdfSuggestions.forEach { (cat, desc) ->
                     Card(
@@ -434,7 +564,7 @@ fun HomeScreen(
 }
 
 @Composable
-fun GreetingHeader(profile: UserProfileDto?) {
+fun GreetingHeader(profile: UserProfileDto?, onLogoutClick: () -> Unit) {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val greeting = when {
         hour < 12 -> "Good Morning"
@@ -477,7 +607,7 @@ fun GreetingHeader(profile: UserProfileDto?) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "$greeting,",
                             style = MaterialTheme.typography.bodyMedium.copy(
@@ -490,23 +620,49 @@ fun GreetingHeader(profile: UserProfileDto?) {
                                 fontWeight = FontWeight.ExtraBold,
                                 letterSpacing = (-0.5).sp
                             ),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .background(
-                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
-                                shape = RoundedCornerShape(14.dp)
-                            ),
-                        contentAlignment = Alignment.Center
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudQueue,
-                            contentDescription = "Cloud Synced",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudQueue,
+                                contentDescription = "Cloud Synced",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onLogoutClick,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Logout,
+                                contentDescription = "Logout",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
 
@@ -769,83 +925,606 @@ fun TailorResumeDialog(
 }
 
 @Composable
+fun MainResumeCard(
+    userProfile: UserProfileDto?,
+    onEditClick: () -> Unit,
+    onDownloadClick: () -> Unit,
+    onResetClick: () -> Unit
+) {
+    var showResetConfirm by remember { mutableStateOf(false) }
+
+    if (showResetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = { Text("Reset Resume Data?", fontWeight = FontWeight.Bold) },
+            text = { Text("This will wipe all your personal details, experiences, and layout settings from local storage and the server. Are you sure?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetConfirm = false
+                        onResetClick()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Reset")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirm = false }) {
+                    Text("Cancel")
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "My Main LaTeX Resume",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (userProfile?.name.isNullOrBlank()) "No resume created yet" else "Master profile compiled",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.Description,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onDownloadClick,
+                    modifier = Modifier.weight(1.2f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Download PDF", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedButton(
+                    onClick = onEditClick,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Edit Details", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                IconButton(
+                    onClick = { showResetConfirm = true },
+                    modifier = Modifier
+                        .background(
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Reset Profile",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun DocumentDetailsDialog(
     document: Document,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onSave: (String, String, String) -> Unit,
+    onDelete: () -> Unit,
+    onDownload: () -> Unit
 ) {
+    var isEditing by remember { mutableStateOf(false) }
+    var editedJobTitle by remember { mutableStateOf(document.jobTitle) }
+    var editedCompanyName by remember { mutableStateOf(document.companyName) }
+    var editedResumeMd by remember { mutableStateOf(document.resumeMd) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Resume?", fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to delete this tailored resume? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDelete()
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Column {
-                Text(
-                    text = document.jobTitle,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-                Text(
-                    text = document.companyName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
+                if (isEditing) {
+                    Text("Edit Tailored Resume Details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                } else {
+                    Text(
+                        text = document.jobTitle,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Text(
+                        text = document.companyName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
             }
         },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 400.dp)
+                    .heightIn(max = 420.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column {
-                    Text(
-                        text = "Job Description Match Details",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
+                if (isEditing) {
+                    OutlinedTextField(
+                        value = editedJobTitle,
+                        onValueChange = { editedJobTitle = it },
+                        label = { Text("Job Title") },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = document.jdText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
-
-                Column {
-                    Text(
-                        text = "Optimized Markdown",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
+                    OutlinedTextField(
+                        value = editedCompanyName,
+                        onValueChange = { editedCompanyName = it },
+                        label = { Text("Company Name") },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            .padding(12.dp)
-                    ) {
+
+                    OutlinedTextField(
+                        value = editedResumeMd,
+                        onValueChange = { editedResumeMd = it },
+                        label = { Text("Resume Markdown") },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(200.dp)
+                    )
+                } else {
+                    Column {
                         Text(
-                            text = document.resumeMd,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onSurface
+                            text = "Job Description Match Details",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = document.jdText.ifBlank { "No Job Description supplied." },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+
+                    Column {
+                        Text(
+                            text = "Optimized Markdown",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = document.resumeMd,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
             }
         },
         confirmButton = {
-            Button(
-                onClick = onDismiss,
-                shape = RoundedCornerShape(12.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Close")
+                if (isEditing) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                isEditing = false
+                                editedJobTitle = document.jobTitle
+                                editedCompanyName = document.companyName
+                                editedResumeMd = document.resumeMd
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Cancel")
+                        }
+
+                        Button(
+                            onClick = {
+                                isEditing = false
+                                onSave(editedJobTitle, editedCompanyName, editedResumeMd)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Save")
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onDownload,
+                            modifier = Modifier.weight(1.2f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Download", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { isEditing = true },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Edit", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { showDeleteConfirm = true },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Delete", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Text("Close")
+                    }
+                }
             }
         },
         shape = RoundedCornerShape(24.dp)
     )
+}
+
+private fun extractTextFromPdfBytes(bytes: ByteArray): String {
+    val content = String(bytes, Charsets.ISO_8859_1)
+    val sb = StringBuilder()
+    
+    var index = 0
+    val textBlocks = mutableListOf<String>()
+    textBlocks.add(content)
+    
+    while (true) {
+        val streamIdx = content.indexOf("stream", index)
+        if (streamIdx == -1) break
+        
+        val endStreamIdx = content.indexOf("endstream", streamIdx)
+        if (endStreamIdx == -1) break
+        
+        var startOffset = streamIdx + 6
+        if (startOffset < content.length && content[startOffset] == '\r') {
+            startOffset++
+        }
+        if (startOffset < content.length && content[startOffset] == '\n') {
+            startOffset++
+        }
+        
+        var endOffset = endStreamIdx
+        if (endOffset > startOffset && content[endOffset - 1] == '\n') {
+            endOffset--
+        }
+        if (endOffset > startOffset && content[endOffset - 1] == '\r') {
+            endOffset--
+        }
+        
+        if (endOffset > startOffset) {
+            val dictStart = (streamIdx - 200).coerceAtLeast(0)
+            val dictPart = content.substring(dictStart, streamIdx)
+            val isFlate = dictPart.contains("/FlateDecode") || dictPart.contains("/Flate")
+            
+            val streamBytes = ByteArray(endOffset - startOffset)
+            for (i in startOffset until endOffset) {
+                streamBytes[i - startOffset] = content[i].code.toByte()
+            }
+            
+            try {
+                if (isFlate) {
+                    val decompressed = decompressFlate(streamBytes)
+                    textBlocks.add(String(decompressed, Charsets.ISO_8859_1))
+                } else {
+                    textBlocks.add(String(streamBytes, Charsets.ISO_8859_1))
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+        
+        index = endStreamIdx + 9
+    }
+    
+    val tjPattern = Regex("""(?:\(([^)]*)\)|<([0-9a-fA-F\s]+)>)\s*(?:Tj|'|")""")
+    val tjArrayPattern = Regex("""\[([^]]*)\]\s*TJ""")
+    
+    for (block in textBlocks) {
+        for (match in tjPattern.findAll(block)) {
+            val parenText = match.groupValues[1]
+            val hexText = match.groupValues[2]
+            val decoded = when {
+                parenText.isNotEmpty() -> decodeParenthesizedString(parenText)
+                hexText.isNotEmpty() -> decodeHexString(hexText)
+                else -> ""
+            }
+            if (decoded.isNotBlank()) {
+                sb.append(decoded).append(" ")
+            }
+        }
+        
+        for (match in tjArrayPattern.findAll(block)) {
+            val arrayContent = match.groupValues[1]
+            val tokenPattern = Regex("""\(([^)]*)\)|<([0-9a-fA-F\s]+)>|(-?\d+(?:\.\d+)?)""")
+            for (tokenMatch in tokenPattern.findAll(arrayContent)) {
+                val parenText = tokenMatch.groupValues[1]
+                val hexText = tokenMatch.groupValues[2]
+                val numberText = tokenMatch.groupValues[3]
+                
+                when {
+                    parenText.isNotEmpty() -> {
+                        sb.append(decodeParenthesizedString(parenText))
+                    }
+                    hexText.isNotEmpty() -> {
+                        sb.append(decodeHexString(hexText))
+                    }
+                    numberText.isNotEmpty() -> {
+                        val num = numberText.toFloatOrNull()
+                        if (num != null && num <= -80f) {
+                            sb.append(" ")
+                        }
+                    }
+                }
+            }
+            sb.append(" ")
+        }
+    }
+    
+    return sb.toString()
+        .replace(Regex("[^\\x20-\\x7E\\n\\r]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
+private fun decompressFlate(compressedBytes: ByteArray): ByteArray {
+    val inflater = java.util.zip.Inflater()
+    inflater.setInput(compressedBytes)
+    val outputStream = java.io.ByteArrayOutputStream(compressedBytes.size)
+    val buffer = ByteArray(1024)
+    try {
+        while (!inflater.finished()) {
+            val count = inflater.inflate(buffer)
+            if (count == 0) {
+                if (inflater.needsInput() || inflater.needsDictionary()) {
+                    break
+                }
+            } else {
+                outputStream.write(buffer, 0, count)
+            }
+        }
+    } catch (e: Exception) {
+        // Ignore
+    } finally {
+        inflater.end()
+    }
+    return outputStream.toByteArray()
+}
+
+private fun decodeHexString(hexString: String): String {
+    val cleanHex = hexString.replace(Regex("\\s+"), "")
+    if (cleanHex.isEmpty()) return ""
+    
+    val paddedHex = if (cleanHex.length % 2 != 0) cleanHex + "0" else cleanHex
+    val bytes = ByteArray(paddedHex.length / 2)
+    try {
+        for (i in bytes.indices) {
+            val index = i * 2
+            val b = paddedHex.substring(index, index + 2).toInt(16).toByte()
+            bytes[i] = b
+        }
+    } catch (e: Exception) {
+        return ""
+    }
+    
+    if (bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte()) {
+        try {
+            return String(bytes, 2, bytes.size - 2, Charsets.UTF_16BE)
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+    
+    val decoded = String(bytes, Charsets.UTF_8)
+    return if (decoded.any { it.isLetterOrDigit() || it.isWhitespace() }) {
+        decoded
+    } else {
+        String(bytes, Charsets.ISO_8859_1)
+    }
+}
+
+private fun decodeParenthesizedString(raw: String): String {
+    val sb = StringBuilder()
+    var i = 0
+    while (i < raw.length) {
+        val c = raw[i]
+        if (c == '\\' && i + 1 < raw.length) {
+            val next = raw[i + 1]
+            if (next.isDigit()) {
+                var octalVal = 0
+                var len = 0
+                while (len < 3 && i + 1 + len < raw.length && raw[i + 1 + len].isDigit()) {
+                    val digit = raw[i + 1 + len] - '0'
+                    if (digit in 0..7) {
+                        octalVal = octalVal * 8 + digit
+                        len++
+                    } else {
+                        break
+                    }
+                }
+                sb.append(octalVal.toChar())
+                i += 1 + len
+            } else {
+                when (next) {
+                    'n' -> sb.append('\n')
+                    'r' -> sb.append('\r')
+                    't' -> sb.append('\t')
+                    'b' -> sb.append('\b')
+                    'f' -> sb.append('\u000c')
+                    '(' -> sb.append('(')
+                    ')' -> sb.append(')')
+                    '\\' -> sb.append('\\')
+                    else -> sb.append(next)
+                }
+                i += 2
+            }
+        } else {
+            sb.append(c)
+            i++
+        }
+    }
+    
+    val result = sb.toString()
+    if (result.length >= 2 && result[0].code == 0xFE && result[1].code == 0xFF) {
+        try {
+            val bytes = ByteArray(result.length)
+            for (j in result.indices) {
+                bytes[j] = result[j].code.toByte()
+            }
+            return String(bytes, 2, bytes.size - 2, Charsets.UTF_16BE)
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+    return result
+}
+
+private fun extractTextViaOcr(context: Context, uri: Uri): String {
+    val sb = StringBuilder()
+    
+    val pfd: ParcelFileDescriptor = context.contentResolver.openFileDescriptor(uri, "r") 
+        ?: return ""
+        
+    val renderer = try {
+        PdfRenderer(pfd)
+    } catch (e: Exception) {
+        pfd.close()
+        return ""
+    }
+    
+    val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    val pageCount = renderer.pageCount
+    
+    for (i in 0 until pageCount) {
+        val page = renderer.openPage(i)
+        val scale = 3.0f
+        val bmpWidth = (page.width * scale).toInt()
+        val bmpHeight = (page.height * scale).toInt()
+        val bmp = Bitmap.createBitmap(bmpWidth, bmpHeight, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bmp)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+        page.close()
+        
+        try {
+            val image = InputImage.fromBitmap(bmp, 0)
+            val result = Tasks.await(recognizer.process(image))
+            val text = result.text
+            if (text.isNotBlank()) {
+                sb.append(text).append("\n")
+            }
+        } catch (e: Exception) {
+            Log.e("PdfOcr", "Failed to run OCR on page $i", e)
+        } finally {
+            bmp.recycle()
+        }
+    }
+    
+    renderer.close()
+    pfd.close()
+    
+    return sb.toString().trim()
 }

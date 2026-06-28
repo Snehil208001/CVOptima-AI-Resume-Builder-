@@ -54,6 +54,7 @@ class ProfileViewModel @Inject constructor(
                 
                 onSuccess()
             } catch (e: Exception) {
+                android.util.Log.e("API_MONITOR", "Failed to sync logout with server", e)
                 // Handle logout exception
             }
         }
@@ -123,6 +124,7 @@ class ProfileViewModel @Inject constructor(
                     skillDao.insertAll(skEntities)
                 }
             } catch (e: Exception) {
+                android.util.Log.e("API_MONITOR", "Failed to pull profile from backend", e)
                 // Network pull failed; fall back cleanly to existing local Room cache
             }
         }
@@ -176,6 +178,7 @@ class ProfileViewModel @Inject constructor(
                 )
                 apiService.saveExperience(syncDto)
             } catch (e: Exception) {
+                android.util.Log.e("API_MONITOR", "Failed to sync experience save with server", e)
                 // Sync failed, fallback to local Room data stream
             }
         }
@@ -188,6 +191,7 @@ class ProfileViewModel @Inject constructor(
             try {
                 apiService.deleteExperience(experience.id)
             } catch (e: Exception) {
+                android.util.Log.e("API_MONITOR", "Failed to sync experience delete with server", e)
                 // Sync delete failed, local Room is source of truth
             }
         }

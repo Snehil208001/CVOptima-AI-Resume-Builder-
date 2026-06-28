@@ -1,6 +1,9 @@
 package com.resumebuilder.backend.service;
 
+import com.resumebuilder.backend.dto.AtsAnalysisRequest;
+import com.resumebuilder.backend.dto.AtsAnalysisResponse;
 import com.resumebuilder.backend.dto.ExperienceOptimizationRequest;
+import com.resumebuilder.backend.dto.SummaryGenerationRequest;
 import com.resumebuilder.backend.entity.*;
 import com.resumebuilder.backend.repository.UserRepository;
 import org.springframework.ai.chat.client.ChatClient;
@@ -8,8 +11,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -18,6 +26,8 @@ import java.util.concurrent.Executors;
 
 @Service
 public class AiResumeService {
+
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(AiResumeService.class);
 
     private final ChatClient chatClient;
     private final UserRepository userRepository;
@@ -38,6 +48,40 @@ public class AiResumeService {
         6. Do NOT include any introductory or concluding remarks, explanations, or metadata. Output ONLY the optimized bullet points.
         """;
 
+    private static final String ATS_ANALYSIS_SYSTEM_PROMPT = """
+        You are an expert ATS (Applicant Tracking System) scanner used by Fortune 500 companies.
+        Your job is to deeply analyze a resume's text content and provide a structured compatibility report.
+
+        Evaluate the resume across these 4 categories:
+        1. **Layout & Format** — Does it have a clear header (name, contact, links)? Is it single-column? Are sections well-organized (Summary, Skills, Experience, Projects, Education, Certifications)?
+        2. **Keywords & Skills** — Does it contain relevant technical keywords, programming languages, frameworks, tools? Does the professional summary mention specialization and years of experience?
+        3. **Metrics & Impact** — Do bullet points contain quantified achievements (percentages, dollar amounts, time saved, team sizes, user counts)?
+        4. **Power Verbs & Writing Quality** — Do bullet points start with strong action verbs (Architected, Engineered, Optimized, Led, etc.)? Is the writing concise and professional?
+
+        If a target job description is provided, evaluate keyword match against it specifically.
+
+        SCORING RULES (be strict and realistic):
+        - A resume with only a name and 2-3 skills should score 25-35.
+        - A resume with basic info but no detailed experience bullets should score 35-48.
+        - A resume with some experience but no metrics/numbers should score 48-62.
+        - A well-structured resume with metrics but missing some sections should score 62-78.
+        - A comprehensive resume with quantified achievements, strong verbs, all sections filled should score 78-92.
+        - A perfect resume tailored to a specific JD with all optimizations should score 90-98.
+        - NEVER give 100. NEVER give above 60 to a thin or sparse resume.
+
+        You MUST respond with ONLY a valid JSON object. Do not include any markdown format, code fences, or headers. The output must be directly parseable as a JSON object.
+
+        The JSON object must contain these exact keys:
+        1. "score" - A numeric value (integer from 0 to 100).
+        2. "rating" - A string matching exactly one of: Needs Significant Work, Moderate Compatibility, ATS-Friendly, Highly ATS Compatible.
+        3. "layoutSuggestions" - An array of 2 to 5 string suggestions (each suggestion prefixing with ✅, ⚠️, or ❌).
+        4. "keywordSuggestions" - An array of 2 to 5 string suggestions (each suggestion prefixing with ✅, ⚠️, or ❌).
+        5. "metricSuggestions" - An array of 2 to 5 string suggestions (each suggestion prefixing with ✅, ⚠️, or ❌).
+        6. "verbSuggestions" - An array of 2 to 5 string suggestions (each suggestion prefixing with ✅, ⚠️, or ❌).
+
+        Be specific and actionable in suggestions. Reference actual content from the resume when possible.
+        """;
+
     public AiResumeService(ChatClient.Builder chatClientBuilder,
                            UserRepository userRepository,
                            @org.springframework.beans.factory.annotation.Value("${spring.ai.openai.api-key:}") String apiKey) {
@@ -49,6 +93,179 @@ public class AiResumeService {
     @PreDestroy
     public void shutdown() {
         executorService.shutdown();
+    }
+
+    /**
+     * Analyzes resume text for ATS compatibility using OpenAI.
+     *
+     * @param resumeText         The full text content of the resume.
+     * @param targetJobDescription Optional target job description for tailored scoring.
+     * @return AtsAnalysisResponse with score, rating, and categorized suggestions.
+     */
+    public AtsAnalysisResponse analyzeAtsScore(String resumeText, String targetJobDescription) {
+        logger.info("Received ATS compatibility analysis request. Resume text length: {} characters.", 
+                resumeText != null ? resumeText.length() : 0);
+
+        if (resumeText == null || resumeText.trim().isEmpty()) {
+            logger.warn("Received empty resume text for ATS analysis.");
+            return AtsAnalysisResponse.builder()
+                    .score(0)
+                    .rating("Needs Significant Work")
+                    .layoutSuggestions(List.of("❌ No resume content provided. Upload a resume or build one in the profile builder."))
+                    .keywordSuggestions(List.of("❌ No keywords detected."))
+                    .metricSuggestions(List.of("❌ No content to evaluate metrics."))
+                    .verbSuggestions(List.of("❌ No content to evaluate writing quality."))
+                    .build();
+        }
+
+        // If API key is not configured, return a heuristic mock response
+        if (apiKey == null || apiKey.trim().isEmpty() || apiKey.contains("dummy") || apiKey.contains("please-set")) {
+            logger.warn("OpenAI API key is not configured (Value: '{}'). Falling back to local offline heuristic scanner.", apiKey);
+            return buildMockAtsResponse(resumeText);
+        }
+
+        String userPrompt = "Analyze this resume for ATS compatibility:\n\n" + resumeText.trim();
+        if (targetJobDescription != null && !targetJobDescription.trim().isEmpty()) {
+            userPrompt += "\n\nTarget Job Description:\n" + targetJobDescription.trim();
+        }
+
+        try {
+            logger.info("Sending prompt to OpenAI chat client for ATS analysis...");
+            String rawResponse = chatClient.prompt()
+                    .system(ATS_ANALYSIS_SYSTEM_PROMPT)
+                    .user(userPrompt)
+                    .call()
+                    .content();
+
+            logger.info("Received raw response from OpenAI: {}", rawResponse);
+
+            // Parse JSON response
+            ObjectMapper mapper = new ObjectMapper();
+            // Strip markdown code fences if present
+            String jsonStr = rawResponse.trim();
+            if (jsonStr.startsWith("```")) {
+                jsonStr = jsonStr.replaceAll("^```[a-zA-Z]*\\n?", "").replaceAll("```$", "").trim();
+            }
+
+            JsonNode root = mapper.readTree(jsonStr);
+
+            AtsAnalysisResponse response = AtsAnalysisResponse.builder()
+                    .score(root.has("score") ? root.get("score").asInt() : 50)
+                    .rating(root.has("rating") ? root.get("rating").asText() : "Moderate Compatibility")
+                    .layoutSuggestions(jsonArrayToList(root, "layoutSuggestions"))
+                    .keywordSuggestions(jsonArrayToList(root, "keywordSuggestions"))
+                    .metricSuggestions(jsonArrayToList(root, "metricSuggestions"))
+                    .verbSuggestions(jsonArrayToList(root, "verbSuggestions"))
+                    .build();
+
+            logger.info("Successfully parsed OpenAI response. Score: {}, Rating: {}", response.getScore(), response.getRating());
+            return response;
+        } catch (Exception e) {
+            logger.error("AI ATS analysis call failed or failed to parse. Returning error fallback.", e);
+            // If AI call fails, return a fallback
+            return AtsAnalysisResponse.builder()
+                    .score(50)
+                    .rating("Moderate Compatibility")
+                    .layoutSuggestions(List.of("⚠️ AI analysis encountered an error. Showing estimated results.", e.getMessage()))
+                    .keywordSuggestions(List.of("⚠️ Retry the analysis to get AI-powered keyword feedback."))
+                    .metricSuggestions(List.of("⚠️ Could not evaluate metrics via AI."))
+                    .verbSuggestions(List.of("⚠️ Could not evaluate writing quality via AI."))
+                    .build();
+        }
+    }
+
+    private List<String> jsonArrayToList(JsonNode root, String fieldName) {
+        List<String> result = new ArrayList<>();
+        if (root.has(fieldName) && root.get(fieldName).isArray()) {
+            for (JsonNode node : root.get(fieldName)) {
+                result.add(node.asText());
+            }
+        }
+        if (result.isEmpty()) {
+            result.add("✅ No specific issues found in this category.");
+        }
+        return result;
+    }
+
+    /**
+     * Mock ATS response based on simple heuristics when OpenAI API key is not configured.
+     */
+    private AtsAnalysisResponse buildMockAtsResponse(String resumeText) {
+        String lower = resumeText.toLowerCase();
+        int score = 40;
+        List<String> layoutTips = new ArrayList<>();
+        List<String> keywordTips = new ArrayList<>();
+        List<String> metricTips = new ArrayList<>();
+        List<String> verbTips = new ArrayList<>();
+
+        // Basic content length scoring
+        int wordCount = resumeText.split("\\s+").length;
+        if (wordCount > 300) score += 15;
+        else if (wordCount > 150) score += 8;
+        else layoutTips.add("❌ Resume content is very sparse (" + wordCount + " words). Aim for 300-600 words.");
+
+        // Check for common sections
+        if (lower.contains("experience") || lower.contains("work history")) score += 8;
+        else layoutTips.add("❌ No 'Experience' or 'Work History' section detected.");
+
+        if (lower.contains("skills") || lower.contains("technologies")) score += 5;
+        else keywordTips.add("❌ No 'Skills' or 'Technologies' section found.");
+
+        if (lower.contains("education") || lower.contains("degree")) score += 5;
+        else layoutTips.add("⚠️ No 'Education' section found.");
+
+        if (lower.contains("project")) score += 5;
+
+        // Check for metrics
+        if (lower.matches(".*\\d+%.*") || lower.matches(".*\\$\\d+.*") || lower.contains("million") || lower.contains("thousand")) {
+            score += 8;
+            metricTips.add("✅ Quantified achievements detected (percentages, dollar amounts).");
+        } else {
+            metricTips.add("❌ No quantified metrics found. Add numbers like '30% improvement' or '$50K savings'.");
+        }
+
+        // Check for action verbs
+        String[] verbs = {"architected", "engineered", "implemented", "developed", "optimized", "designed", "led", "managed", "deployed"};
+        boolean hasVerbs = false;
+        for (String v : verbs) {
+            if (lower.contains(v)) { hasVerbs = true; break; }
+        }
+        if (hasVerbs) {
+            score += 5;
+            verbTips.add("✅ Strong action verbs detected in experience descriptions.");
+        } else {
+            verbTips.add("❌ Start bullet points with strong verbs: Architected, Engineered, Optimized, Led.");
+        }
+
+        // Contact info
+        if (lower.contains("@") && lower.contains(".com")) score += 3;
+        if (lower.contains("linkedin")) score += 2;
+        if (lower.contains("github")) score += 2;
+
+        score = Math.max(25, Math.min(score, 95));
+
+        if (layoutTips.isEmpty()) layoutTips.add("✅ Resume structure looks organized.");
+        if (keywordTips.isEmpty()) keywordTips.add("✅ Relevant technical keywords present.");
+        if (metricTips.isEmpty()) metricTips.add("⚠️ Add more quantified metrics to stand out.");
+        if (verbTips.isEmpty()) verbTips.add("✅ Writing quality is professional.");
+
+        String rating;
+        if (score >= 85) rating = "Highly ATS Compatible";
+        else if (score >= 70) rating = "ATS-Friendly";
+        else if (score >= 55) rating = "Moderate Compatibility";
+        else rating = "Needs Significant Work";
+
+        AtsAnalysisResponse response = AtsAnalysisResponse.builder()
+                .score(score)
+                .rating(rating)
+                .layoutSuggestions(layoutTips)
+                .keywordSuggestions(keywordTips)
+                .metricSuggestions(metricTips)
+                .verbSuggestions(verbTips)
+                .build();
+
+        logger.info("Generated offline mock ATS response. Score: {}, Rating: {}", response.getScore(), response.getRating());
+        return response;
     }
 
     /**
@@ -242,5 +459,70 @@ public class AiResumeService {
      */
     public SseEmitter getEmitter(String taskId) {
         return emitterMap.get(taskId);
+    }
+
+    private String buildMockSummaryResponse(SummaryGenerationRequest request) {
+        StringBuilder sb = new StringBuilder("Results-driven professional ");
+        if (request.getYearsOfExp() != null && !request.getYearsOfExp().trim().isEmpty()) {
+            sb.append("with ").append(request.getYearsOfExp().trim()).append(" of experience ");
+        }
+        if (request.getSpecialization() != null && !request.getSpecialization().trim().isEmpty()) {
+            sb.append("specializing in ").append(request.getSpecialization().trim()).append(". ");
+        } else {
+            sb.append("seeking to leverage technical capabilities. ");
+        }
+        if (request.getTargetRole() != null && !request.getTargetRole().trim().isEmpty()) {
+            sb.append("Seeking a role as a ").append(request.getTargetRole().trim()).append(". ");
+        }
+        if (request.getPrimaryTechnologies() != null && !request.getPrimaryTechnologies().trim().isEmpty()) {
+            sb.append("Proficient in ").append(request.getPrimaryTechnologies().trim()).append(". ");
+        }
+        sb.append("Demonstrated success designing and delivering optimized features while ensuring scalable software development.");
+        return sb.toString();
+    }
+
+    private static final String SUMMARY_GENERATION_SYSTEM_PROMPT = """
+        You are a professional resume writer and career coach.
+        Your task is to write a highly polished, results-driven professional summary for a resume.
+        
+        You will be given the candidate's years of experience, area of specialization, target role, and primary technologies.
+        
+        Follow these instructions strictly:
+        1. Write a single, cohesive paragraph of 3 to 4 sentences.
+        2. Start with an impactful description of their experience and specialization (e.g., 'Results-driven [Target Role] with [Years of Experience] of expertise specializing in [Specialization]...').
+        3. Highlight their key skills and technologies naturally in the middle sentence.
+        4. End with a strong statement about their value proposition and what they aim to achieve in their next role.
+        5. Keep the tone professional, active, and impact-driven.
+        6. Do NOT include any formatting, markdown, quotes, bullet points, introductory or concluding remarks. Output ONLY the raw professional summary paragraph.
+        """;
+
+    public String generateProfessionalSummary(SummaryGenerationRequest request) {
+        if (apiKey == null || apiKey.trim().isEmpty() || apiKey.contains("dummy") || apiKey.contains("please-set")) {
+            logger.warn("OpenAI API key is not configured. Falling back to local offline heuristic summary generator.");
+            return buildMockSummaryResponse(request);
+        }
+
+        String userPrompt = String.format(
+            "Candidate details:\n- Years of Experience: %s\n- Specialization: %s\n- Target Role: %s\n- Primary Technologies: %s",
+            request.getYearsOfExp() != null ? request.getYearsOfExp() : "",
+            request.getSpecialization() != null ? request.getSpecialization() : "",
+            request.getTargetRole() != null ? request.getTargetRole() : "",
+            request.getPrimaryTechnologies() != null ? request.getPrimaryTechnologies() : ""
+        );
+
+        try {
+            logger.info("Sending prompt to OpenAI chat client for summary generation...");
+            String rawResponse = chatClient.prompt()
+                    .system(SUMMARY_GENERATION_SYSTEM_PROMPT)
+                    .user(userPrompt)
+                    .call()
+                    .content();
+
+            logger.info("Received summary from OpenAI: {}", rawResponse);
+            return rawResponse.trim();
+        } catch (Exception e) {
+            logger.error("OpenAI summary generation failed. Falling back to mock summary response.", e);
+            return buildMockSummaryResponse(request);
+        }
     }
 }

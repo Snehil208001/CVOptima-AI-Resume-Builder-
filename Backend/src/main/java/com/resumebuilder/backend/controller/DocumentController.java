@@ -60,6 +60,34 @@ public class DocumentController {
         return ResponseEntity.ok(responseDto);
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<DocumentDTO> updateDocument(@PathVariable UUID id, @RequestBody DocumentDTO dto) {
+        Document existingDocument = documentRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Document with ID " + id + " not found"));
+
+        existingDocument.setJobTitle(dto.getJobTitle());
+        existingDocument.setCompanyName(dto.getCompanyName());
+        if (dto.getJdText() != null) {
+            existingDocument.setJdText(dto.getJdText());
+        }
+        existingDocument.setResumeMd(dto.getResumeMd());
+        if (dto.getStatus() != null) {
+            existingDocument.setStatus(dto.getStatus());
+        }
+
+        existingDocument = documentRepository.save(existingDocument);
+        return ResponseEntity.ok(mapToDTO(existingDocument));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteDocument(@PathVariable UUID id) {
+        if (!documentRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        documentRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
     private DocumentDTO mapToDTO(Document document) {
         return DocumentDTO.builder()
                 .id(document.getId())

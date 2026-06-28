@@ -1,8 +1,6 @@
 package com.snehil.cvoptima.data.remote
 
 import com.snehil.cvoptima.data.local.dao.TokenDao
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
 import javax.inject.Inject
@@ -14,10 +12,8 @@ class AuthInterceptor @Inject constructor(
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
         
-        // Fetch the active token using blocking coroutines
-        val token = runBlocking {
-            tokenDaoProvider.get().getTokenFlow().firstOrNull()
-        }
+        // Fetch the active token synchronously from Room
+        val token = tokenDaoProvider.get().getTokenSync()
         
         val requestBuilder = originalRequest.newBuilder()
         if (!token.isNullOrBlank()) {

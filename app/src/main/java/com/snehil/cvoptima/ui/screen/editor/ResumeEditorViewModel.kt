@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.snehil.cvoptima.data.local.DatabaseSeeder
 import com.snehil.cvoptima.data.local.dao.*
 import com.snehil.cvoptima.data.local.entity.*
 import com.snehil.cvoptima.data.remote.ApiService
@@ -15,6 +16,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import javax.inject.Inject
 
 @HiltViewModel
@@ -59,20 +63,77 @@ class ResumeEditorViewModel @Inject constructor(
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
     val syncState = _syncState.asStateFlow()
 
+    private val persistentScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    fun saveDraft() {
+        persistentScope.launch {
+            try {
+                basicInfoDao.deleteByResumeId(1L)
+                basicInfoDao.insert(
+                    LocalBasicInfo(
+                        name = name,
+                        email = email,
+                        contactNumber = contactNumber,
+                        linkedinUrl = linkedinUrl,
+                        githubUrl = githubUrl,
+                        portfolioUrl = portfolioUrl,
+                        location = location,
+                        professionalSummary = professionalSummary,
+                        resumeId = 1L
+                    )
+                )
+
+                educationDao.deleteByResumeId(1L)
+                educationDao.insertAll(educations.map { it.copy(id = 0) })
+
+                experienceDao.deleteByResumeId(1L)
+                experienceDao.insertAll(experiences.map { it.copy(id = 0) })
+
+                projectDao.deleteByResumeId(1L)
+                projectDao.insertAll(projects.map { it.copy(id = 0) })
+
+                skillGroupDao.deleteByResumeId(1L)
+                skillGroupDao.insertAll(skillGroups.map { it.copy(id = 0) })
+
+                certificationDao.deleteByResumeId(1L)
+                certificationDao.insertAll(certifications.map { it.copy(id = 0) })
+
+                layoutSettingsDao.deleteByResumeId(1L)
+                layoutSettingsDao.insert(
+                    LocalLayoutSettings(
+                        layoutDensity = layoutDensity,
+                        sectionOrder = sectionOrder.toList(),
+                        resumeId = 1L
+                    )
+                )
+                android.util.Log.i("DRAFT_SAVE", "Draft auto-saved successfully to Room")
+            } catch (e: Exception) {
+                android.util.Log.e("DRAFT_SAVE", "Failed to save draft to Room", e)
+            }
+        }
+    }
+
     init {
         loadData()
     }
 
-    fun loadData() {
+    fun loadData(forceRefresh: Boolean = false) {
         viewModelScope.launch {
             _syncState.value = SyncState.Loading
             try {
-                // Try pulling remote first to seed DB
-                val profile = apiService.getProfile()
-                syncRemoteToLocal(profile)
+                val hasLocalData = basicInfoDao.getByResumeId(1L) != null
+                if (forceRefresh || !hasLocalData) {
+                    // Try pulling remote first to seed DB
+                    val profile = apiService.getProfile()
+                    syncRemoteToLocal(profile)
+                }
             } catch (e: Exception) {
-                // Ignore API failure and fall back to local Room cache
+                android.util.Log.e("API_MONITOR", "Failed to load remote profile, falling back to local Room cache", e)
             }
+            DatabaseSeeder.seedIfNeeded(
+                basicInfoDao, educationDao, experienceDao,
+                skillGroupDao, projectDao, certificationDao, layoutSettingsDao
+            )
             loadFromRoom()
             _syncState.value = SyncState.Idle
         }
@@ -232,33 +293,54 @@ class ResumeEditorViewModel @Inject constructor(
     }
 
     fun generateAiSummary() {
-        val summary = buildString {
-            append("Results-driven professional ")
-            if (yearsOfExp.isNotBlank()) {
-                append("with $yearsOfExp of experience ")
-            }
-            if (specialization.isNotBlank()) {
-                append("specializing in $specialization. ")
-            } else {
-                append("seeking to leverage technical capabilities. ")
-            }
-            if (targetRole.isNotBlank()) {
-                append("Seeking a role as a $targetRole. ")
-            }
-            val tech = if (primaryTechnologies.isNotBlank()) {
-                primaryTechnologies
-            } else {
-                skillGroups.flatMap { it.skills }.take(6).joinToString(", ")
-            }
-            if (tech.isNotEmpty()) {
-                append("Proficient in $tech. ")
-            }
-            if (experiences.isNotEmpty()) {
-                val topExp = experiences.first()
-                append("Demonstrated success delivering high-quality results at ${topExp.company}.")
+        viewModelScope.launch {
+            try {
+                _syncState.value = SyncState.Loading
+                val request = SummaryGenerationRequest(
+                    yearsOfExp = yearsOfExp,
+                    specialization = specialization,
+                    targetRole = targetRole,
+                    primaryTechnologies = primaryTechnologies
+                )
+                val response = apiService.generateSummary(request)
+                if (response.summary.isNotBlank()) {
+                    professionalSummary = response.summary
+                    saveDraft()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("AI_SUMMARY", "Failed to generate AI summary, falling back to local heuristic", e)
+                val fallbackSummary = buildString {
+                    append("Results-driven professional ")
+                    if (yearsOfExp.isNotBlank()) {
+                        append("with $yearsOfExp of experience ")
+                    }
+                    if (specialization.isNotBlank()) {
+                        append("specializing in $specialization. ")
+                    } else {
+                        append("seeking to leverage technical capabilities. ")
+                    }
+                    if (targetRole.isNotBlank()) {
+                        append("Seeking a role as a $targetRole. ")
+                    }
+                    val tech = if (primaryTechnologies.isNotBlank()) {
+                        primaryTechnologies
+                    } else {
+                        skillGroups.flatMap { it.skills }.take(6).joinToString(", ")
+                    }
+                    if (tech.isNotEmpty()) {
+                        append("Proficient in $tech. ")
+                    }
+                    if (experiences.isNotEmpty()) {
+                        val topExp = experiences.first()
+                        append("Demonstrated success delivering high-quality results at ${topExp.company}.")
+                    }
+                }
+                professionalSummary = fallbackSummary.trim()
+                saveDraft()
+            } finally {
+                _syncState.value = SyncState.Idle
             }
         }
-        professionalSummary = summary.trim()
     }
 
     fun validateInputs(): String? {
@@ -392,6 +474,7 @@ class ResumeEditorViewModel @Inject constructor(
                 _syncState.value = SyncState.Idle
                 onComplete(true, "Profile synchronized successfully!")
             } catch (e: Exception) {
+                android.util.Log.e("API_MONITOR", "Profile remote sync failed, using offline fallback", e)
                 _syncState.value = SyncState.Idle
                 // Offline fallback - saved locally but remote sync failed
                 onComplete(true, "Offline cache updated. Server sync failed: ${e.localizedMessage}")

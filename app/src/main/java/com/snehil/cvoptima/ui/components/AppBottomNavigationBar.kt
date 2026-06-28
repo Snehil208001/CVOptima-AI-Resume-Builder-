@@ -77,10 +77,19 @@ fun AppBottomNavigationBar(
                             indication = null
                         ) {
                             if (!isSelected) {
-                                navController.navigate(item.route) {
-                                    popUpTo(Screen.Home.route) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                if (item.route == Screen.Home.route) {
+                                    val popped = navController.popBackStack(Screen.Home.route, false)
+                                    if (!popped) {
+                                        navController.navigate(Screen.Home.route) {
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                } else {
+                                    navController.navigate(item.route) {
+                                        popUpTo(Screen.Home.route) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             }
                         }

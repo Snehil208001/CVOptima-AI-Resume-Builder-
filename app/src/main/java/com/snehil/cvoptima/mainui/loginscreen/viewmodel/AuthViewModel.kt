@@ -26,7 +26,7 @@ class AuthViewModel @Inject constructor(
 
     fun login(username: String, password: String) {
         if (username.isBlank() || password.isBlank()) {
-            _authState.value = AuthState.Error("Username and password cannot be empty")
+            _authState.value = AuthState.Error("Username or email and password cannot be empty")
             return
         }
 

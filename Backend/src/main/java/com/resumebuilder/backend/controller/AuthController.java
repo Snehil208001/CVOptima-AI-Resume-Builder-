@@ -61,8 +61,9 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody AuthRequest request) {
+        org.springframework.security.core.Authentication authentication;
         try {
-            authenticationManager.authenticate(
+            authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             request.getUsername(),
                             request.getPassword()
@@ -72,10 +73,14 @@ public class AuthController {
             throw new IllegalArgumentException("Invalid username or password");
         }
 
-        String token = jwtTokenProvider.generateToken(request.getUsername());
+        org.springframework.security.core.userdetails.UserDetails userDetails = 
+                (org.springframework.security.core.userdetails.UserDetails) authentication.getPrincipal();
+        String actualUsername = userDetails.getUsername();
+
+        String token = jwtTokenProvider.generateToken(actualUsername);
         return ResponseEntity.ok(AuthResponse.builder()
                 .token(token)
-                .username(request.getUsername())
+                .username(actualUsername)
                 .build());
     }
 }

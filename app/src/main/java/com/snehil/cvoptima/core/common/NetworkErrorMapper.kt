@@ -11,13 +11,16 @@ data class ApiErrorResponse(
 )
 
 fun Throwable.getErrorMessage(): String {
+    android.util.Log.e("API_MONITOR", "Error mapped in NetworkErrorMapper: ${this.message}", this)
     return when (this) {
         is HttpException -> {
             try {
                 val errorBody = response()?.errorBody()?.string()
+                android.util.Log.e("API_MONITOR", "HTTP Exception Error Body: $errorBody")
                 val apiError = Gson().fromJson(errorBody, ApiErrorResponse::class.java)
                 apiError.message ?: "An unexpected error occurred"
             } catch (e: Exception) {
+                android.util.Log.e("API_MONITOR", "Failed to parse HTTP error body", e)
                 "An unexpected network error occurred"
             }
         }

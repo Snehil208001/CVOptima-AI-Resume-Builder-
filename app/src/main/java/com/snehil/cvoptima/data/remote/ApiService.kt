@@ -8,6 +8,10 @@ import com.snehil.cvoptima.data.remote.model.UserProfileDto
 import com.snehil.cvoptima.data.remote.model.ExperienceDto
 import com.snehil.cvoptima.data.remote.model.ExperienceOptimizationRequest
 import com.snehil.cvoptima.data.remote.model.ExperienceOptimizationResponse
+import com.snehil.cvoptima.data.remote.model.AtsAnalysisRequest
+import com.snehil.cvoptima.data.remote.model.AtsAnalysisResponse
+import com.snehil.cvoptima.data.remote.model.SummaryGenerationRequest
+import com.snehil.cvoptima.data.remote.model.SummaryGenerationResponse
 import retrofit2.http.Body
 import retrofit2.http.POST
 import retrofit2.http.GET
@@ -71,4 +75,25 @@ interface ApiService {
     suspend fun optimizeExperience(
         @Body request: ExperienceOptimizationRequest
     ): ExperienceOptimizationResponse
+
+    @POST("api/v1/ai/ats-analyze")
+    suspend fun analyzeAts(
+        @Body request: AtsAnalysisRequest
+    ): AtsAnalysisResponse
+
+    @PUT("api/v1/documents/{id}")
+    suspend fun updateDocument(
+        @Path("id") id: String,
+        @Body request: DocumentDto
+    ): DocumentDto
+
+    @DELETE("api/v1/documents/{id}")
+    suspend fun deleteDocument(
+        @Path("id") id: String
+    ): Response<Void>
+
+    @POST("api/v1/ai/summary")
+    suspend fun generateSummary(
+        @Body request: SummaryGenerationRequest
+    ): SummaryGenerationResponse
 }

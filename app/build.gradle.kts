@@ -71,6 +71,9 @@ dependencies {
     implementation(libs.lottie.compose)
     implementation(libs.androidx.compose.material.icons.extended)
 
+    // ML Kit Text Recognition for OCR on scanned/image-only PDFs
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

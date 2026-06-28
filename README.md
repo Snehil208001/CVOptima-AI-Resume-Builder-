@@ -25,6 +25,9 @@ The project follows a split-module structure:
 ### 📱 Android Application
 * **Modern Jetpack Compose UI**: Built with Material 3 design, smooth transitions, and premium micro-animations (Lottie integration).
 * **Robust Authentication Flow**: Complete Splash, Login, and Registration screens with state management via Dagger Hilt ViewModels.
+* **AI ATS Compatibility Analyzer**: Allows users to pick a local PDF resume, extracts digital text (with an automatic fallback to ML Kit OCR scanning if text is scanned/scrambled), evaluates it against target role criteria, and renders a dynamic bottom-sheet report showing score (0-100) and actionable suggestions (Layout, Keywords, Metrics, Action Verbs).
+* **AI Professional Summary Generator**: Instantly generates an impactful, tailored professional summary within the Editor Screen using user credentials (experience, specialization, target role, primary tech) with a built-in local fallback heuristic if network calls fail.
+* **Flexible Layout Customization**: Offers customizable Layout Density (Compact, Normal, Spacious) and drag-and-drop section reordering (Skills, Work Experiences, Projects, Education, Certifications) that auto-saves drafts locally (Room) and synchronizes with the server.
 * **AI Optimization Entry Gate (`JobInputScreen`)**: A validation-locked input interface featuring structured fields for target company name, desired job title, and a large multi-line text area (240.dp) for pasting raw job descriptions. Validation automatically unlocks the optimization flow.
 * **SSE Typewriter Generation (`StreamingGenerationScreen`)**: A specialized monospaced console view that listens to backend Server-Sent Events (SSE) using OkHttp's `EventSource` and renders optimized resume bullet points dynamically with auto-scroll logic.
 * **Offline-First Database**: Locally caches tokens, educational history, work experiences, and skills using Android Room Database.
@@ -34,6 +37,8 @@ The project follows a split-module structure:
 ### ⚙️ Spring Boot Backend
 * **AI Resume Optimization**: Uses Spring AI (OpenAI models) to optimize raw resume text using the **Google X-Y-Z Formula**:
   > *"Accomplished **[X]** as measured by **[Y]**, by doing **[Z]**"*
+* **AI ATS compatibility Score evaluation**: Leverages Spring AI to calculate overall compatibility scores and produce structured lists of recommendations.
+* **AI Summary Generator**: Tailors dynamic professional summaries on the fly based on specific specialization and role parameters.
 * **Real-time SSE Token Streaming**: Optimizations stream to the client word-by-word via Server-Sent Events, creating a dynamic, responsive user experience.
 * **Virtual Threads Integration**: Concurrency handles high-traffic streaming requests efficiently using Java 21’s `Executors.newVirtualThreadPerTaskExecutor()`.
 * **JWT Security Configuration**: Endpoints are secured using Spring Security, custom User Details service, and JSON Web Tokens (JJWT).
@@ -98,7 +103,7 @@ All secured endpoints require the `Authorization: Bearer <token>` header.
 * **`POST /api/v1/auth/register`**: Register a new user account.
 * **`POST /api/v1/auth/login`**: Authenticate and retrieve a JWT bearer token.
 
-### 🧠 AI Optimization Endpoints
+### 🧠 AI Optimization & Analysis Endpoints
 * **`POST /api/v1/ai/optimize`**: Starts an asynchronous resume experience optimization task.
   * **Payload:**
     ```json
@@ -118,9 +123,46 @@ All secured endpoints require the `Authorization: Bearer <token>` header.
     * `token`: A piece of the generated markdown string.
     * `done`: Signals the end of the streaming task.
     * `error`: Emits any exceptions raised during processing.
+* **`POST /api/v1/ai/ats-analyze`**: Synchronously analyzes resume text against a target job description.
+  * **Payload:**
+    ```json
+    {
+      "resumeText": "...",
+      "targetJobDescription": "..."
+    }
+    ```
+  * **Response (Status 200 OK):**
+    ```json
+    {
+      "score": 85,
+      "rating": "EXCELLENT",
+      "layoutSuggestions": ["Use standard margins"],
+      "keywordSuggestions": ["Add Kotlin, Dagger Hilt"],
+      "metricSuggestions": ["Quantify HRMS performance by hours saved"],
+      "verbSuggestions": ["Use 'Architected' instead of 'Built'"]
+    }
+    ```
+* **`POST /api/v1/ai/summary`**: Generates a professional summary based on candidate parameters.
+  * **Payload:**
+    ```json
+    {
+      "yearsOfExp": "3 years",
+      "specialization": "Backend Development",
+      "targetRole": "Java Engineer",
+      "primaryTechnologies": "Spring Boot, Docker, PostgreSQL"
+    }
+    ```
+  * **Response (Status 200 OK):**
+    ```json
+    {
+      "summary": "Results-driven Java Engineer with 3 years of experience specializing in Backend Development..."
+    }
+    ```
 
 ### 👤 Profile & Document Endpoints
 * **`GET /api/v1/profile`**: Retrieve user profile metrics and stats.
+* **`PUT /api/v1/profile`**: Update personal details.
+* **`PUT /api/v1/profile/sync`**: Fully synchronize local profile (including education, experience, layout config, projects, certifications) with backend database.
 * **`GET /api/v1/documents`**: Fetch the list of resumes generated or uploaded by the authenticated user.
 
 ---

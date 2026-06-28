@@ -38,6 +38,7 @@ class DocumentRepositoryImpl @Inject constructor(
                 emit(docs)
             }
         } catch (e: Exception) {
+            android.util.Log.e("API_MONITOR", "Failed to fetch documents from server", e)
             emit(mockDocuments)
         }
     }
@@ -71,6 +72,7 @@ class DocumentRepositoryImpl @Inject constructor(
             mockDocuments.add(0, savedDoc)
             savedDoc
         } catch (e: Exception) {
+            android.util.Log.e("API_MONITOR", "Failed to create document on server, using local fallback", e)
             val fallbackDoc = Document(
                 id = newDocDto.id!!,
                 userId = 1L,
@@ -82,6 +84,74 @@ class DocumentRepositoryImpl @Inject constructor(
             )
             mockDocuments.add(0, fallbackDoc)
             fallbackDoc
+        }
+    }
+
+    override suspend fun updateDocument(
+        id: String,
+        jobTitle: String,
+        companyName: String,
+        resumeMd: String
+    ): Document? {
+        val updateDto = DocumentDto(
+            id = id,
+            userId = 1L,
+            jobTitle = jobTitle,
+            companyName = companyName,
+            jdText = null,
+            resumeMd = resumeMd,
+            status = "OPTIMIZED"
+        )
+        return try {
+            val response = apiService.updateDocument(id, updateDto)
+            val updatedDoc = Document(
+                id = response.id ?: id,
+                userId = response.userId ?: 1L,
+                jobTitle = response.jobTitle ?: jobTitle,
+                companyName = response.companyName ?: companyName,
+                jdText = response.jdText ?: "",
+                resumeMd = response.resumeMd ?: resumeMd,
+                status = response.status ?: "OPTIMIZED"
+            )
+            val idx = mockDocuments.indexOfFirst { it.id == id }
+            if (idx >= 0) {
+                mockDocuments[idx] = updatedDoc
+            }
+            updatedDoc
+        } catch (e: Exception) {
+            android.util.Log.e("API_MONITOR", "Failed to update document on server, using local fallback", e)
+            val updatedDoc = Document(
+                id = id,
+                userId = 1L,
+                jobTitle = jobTitle,
+                companyName = companyName,
+                jdText = "",
+                resumeMd = resumeMd,
+                status = "OPTIMIZED"
+            )
+            val idx = mockDocuments.indexOfFirst { it.id == id }
+            if (idx >= 0) {
+                mockDocuments[idx] = updatedDoc
+            }
+            updatedDoc
+        }
+    }
+
+    override suspend fun deleteDocument(id: String): Boolean {
+        return try {
+            val response = apiService.deleteDocument(id)
+            if (response.isSuccessful) {
+                mockDocuments.removeAll { it.id == id }
+                true
+            } else {
+                android.util.Log.e("API_MONITOR", "Delete document API response unsuccessful: ${response.code()}")
+                mockDocuments.removeAll { it.id == id }
+                true
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("API_MONITOR", "Failed to delete document from server, using local fallback", e)
+            mockDocuments.removeAll { it.id == id }
+            true
         }
     }
 }

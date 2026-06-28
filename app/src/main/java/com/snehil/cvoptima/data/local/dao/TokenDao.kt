@@ -15,6 +15,9 @@ interface TokenDao {
     @Query("SELECT token FROM token_table WHERE id = 0")
     fun getTokenFlow(): Flow<String?>
 
+    @Query("SELECT token FROM token_table WHERE id = 0")
+    fun getTokenSync(): String?
+
     @Query("DELETE FROM token_table WHERE id = 0")
     suspend fun clearToken(): Int
 }

@@ -3,6 +3,7 @@ package com.snehil.cvoptima.data.local
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.Transaction
 import com.snehil.cvoptima.data.local.dao.*
 import com.snehil.cvoptima.data.local.entity.*
 
@@ -32,4 +33,18 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
     abstract fun certificationDao(): CertificationDao
     abstract fun layoutSettingsDao(): LayoutSettingsDao
+
+    @Transaction
+    suspend fun clearAllUserData() {
+        // 1. Clear tables containing dependent child items first
+        educationDao().deleteByResumeId(1L)
+        experienceDao().deleteByResumeId(1L)
+        projectDao().deleteByResumeId(1L)
+        certificationDao().deleteByResumeId(1L)
+        skillGroupDao().deleteByResumeId(1L)
+        
+        // 2. Clear parent profile and structural meta-data last
+        basicInfoDao().deleteByResumeId(1L)
+        layoutSettingsDao().deleteByResumeId(1L)
+    }
 }

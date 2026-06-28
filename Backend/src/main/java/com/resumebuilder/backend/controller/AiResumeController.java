@@ -1,7 +1,11 @@
 package com.resumebuilder.backend.controller;
 
+import com.resumebuilder.backend.dto.AtsAnalysisRequest;
+import com.resumebuilder.backend.dto.AtsAnalysisResponse;
 import com.resumebuilder.backend.dto.ExperienceOptimizationRequest;
 import com.resumebuilder.backend.dto.ExperienceOptimizationResponse;
+import com.resumebuilder.backend.dto.SummaryGenerationRequest;
+import com.resumebuilder.backend.dto.SummaryGenerationResponse;
 import com.resumebuilder.backend.service.AiResumeService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -47,5 +51,22 @@ public class AiResumeController {
             throw new IllegalArgumentException("Task ID not found or already completed");
         }
         return emitter;
+    }
+
+    @PostMapping("/ats-analyze")
+    public ResponseEntity<AtsAnalysisResponse> analyzeAts(
+            @RequestBody AtsAnalysisRequest request) {
+        AtsAnalysisResponse response = aiResumeService.analyzeAtsScore(
+                request.getResumeText(),
+                request.getTargetJobDescription()
+        );
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/summary")
+    public ResponseEntity<SummaryGenerationResponse> generateSummary(
+            @RequestBody SummaryGenerationRequest request) {
+        String summary = aiResumeService.generateProfessionalSummary(request);
+        return ResponseEntity.ok(new SummaryGenerationResponse(summary));
     }
 }

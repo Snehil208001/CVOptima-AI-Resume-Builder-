@@ -59,7 +59,9 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp),
+            .padding(24.dp)
+            .navigationBarsPadding()
+            .imePadding(),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -137,7 +139,8 @@ fun LoginScreen(
                         viewModel.resetState()
                     }
                 },
-                label = { Text("Username") },
+                label = { Text("Username or Email") },
+                placeholder = { Text("Enter username or email") },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Person,

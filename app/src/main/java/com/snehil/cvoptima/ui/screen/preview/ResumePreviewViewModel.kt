@@ -1,21 +1,25 @@
 package com.snehil.cvoptima.ui.screen.preview
 
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.snehil.cvoptima.data.local.DatabaseSeeder
 import com.snehil.cvoptima.data.local.dao.*
 import com.snehil.cvoptima.data.local.entity.*
 import com.snehil.cvoptima.data.remote.ApiService
 import com.snehil.cvoptima.data.remote.model.*
 import com.snehil.cvoptima.mainui.generator.ResumePdfExporter
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -53,6 +57,10 @@ class ResumePreviewViewModel @Inject constructor(
     val atsKeywordTips = mutableStateListOf<String>()
     val atsMetricTips = mutableStateListOf<String>()
     val atsVerbTips = mutableStateListOf<String>()
+    var isAiPowered by mutableStateOf(false)
+
+    private val _aiAnalysisLoading = MutableStateFlow(false)
+    val aiAnalysisLoading = _aiAnalysisLoading.asStateFlow()
 
     init {
         loadData()
@@ -62,6 +70,10 @@ class ResumePreviewViewModel @Inject constructor(
         viewModelScope.launch {
             _loading.value = true
             try {
+                DatabaseSeeder.seedIfNeeded(
+                    basicInfoDao, educationDao, experienceDao,
+                    skillGroupDao, projectDao, certificationDao, layoutSettingsDao
+                )
                 val info = basicInfoDao.getByResumeId(1L)
                 basicInfo = info
 
@@ -270,13 +282,203 @@ class ResumePreviewViewModel @Inject constructor(
             atsLayoutTips.add("Include relevant certifications or hackathon achievements to validate credentials.")
         }
 
-        atsScore = score.coerceIn(40, 99) // Limit score bounds logically
+        // 7. Enforce Content Quality Constraints (Core ATS logic)
+        var totalWorkBullets = 0
+        for (exp in experiences) {
+            totalWorkBullets += exp.bulletPoints?.size ?: 0
+        }
+        val totalSkillsCount = skillGroups.flatMap { it.skills }.size
+
+        var finalScore = score.coerceIn(40, 99)
+        
+        // Critical Caps: An empty or sparse profile cannot bypass ATS filters
+        if (experiences.isEmpty() || totalWorkBullets == 0) {
+            finalScore = finalScore.coerceAtMost(48) // Cap under 50% if no job descriptions/bullets exist
+            atsLayoutTips.add("❌ Critical: Add impact-driven bullet points to your work experiences. Parsers need text to scan.")
+        } else if (totalWorkBullets < 4) {
+            finalScore = finalScore.coerceAtMost(58) // Cap under 60% if details are too thin
+            atsLayoutTips.add("⚠️ Work experience details are thin. Expand roles with more accomplishment bullet points.")
+        }
+        
+        if (totalSkillsCount < 5) {
+            finalScore = finalScore.coerceAtMost(62) // Cap if skill directory has under 5 items
+            atsKeywordTips.add("❌ Critical: Add at least 5-10 core skills matching your target job keywords.")
+        }
+
+        if (projects.isEmpty()) {
+            finalScore = finalScore.coerceAtMost(68) // Cap if no projects are listed to validate skills
+        }
+
+        atsScore = finalScore
         
         atsRating = when {
             atsScore >= 85 -> "Highly Compatible (Excellent)"
             atsScore >= 70 -> "ATS-Friendly (Good)"
             else -> "Needs Optimization"
         }
+    }
+
+    /**
+     * Sends the user's profile data to the backend for AI-powered ATS analysis.
+     * Falls back to local heuristic if backend is unreachable.
+     */
+    fun analyzeProfileWithAi() {
+        viewModelScope.launch {
+            _aiAnalysisLoading.value = true
+            try {
+                val resumeText = buildResumeText()
+                Log.i("ATS_AI", "Sending resume text (${resumeText.length} chars) to AI backend")
+                
+                val response = withContext(Dispatchers.IO) {
+                    apiService.analyzeAts(
+                        AtsAnalysisRequest(
+                            resumeText = resumeText,
+                            targetJobDescription = null
+                        )
+                    )
+                }
+                
+                Log.i("ATS_AI", "AI response: score=${response.score}, rating=${response.rating}")
+                applyAiResponse(response)
+                isAiPowered = true
+            } catch (e: Exception) {
+                Log.e("ATS_AI", "AI analysis failed, falling back to local heuristic", e)
+                // Fallback to local calculation
+                calculateAtsReport()
+                isAiPowered = false
+            } finally {
+                _aiAnalysisLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Sends arbitrary resume text (e.g. from an uploaded PDF) to the backend for AI analysis.
+     * Returns true if AI was used, false if it fell back to local.
+     */
+    suspend fun analyzeTextWithAi(resumeText: String): AtsAnalysisResponse? {
+        return try {
+            Log.i("ATS_AI", "Sending PDF text (${resumeText.length} chars) to AI backend")
+            val response = withContext(Dispatchers.IO) {
+                apiService.analyzeAts(
+                    AtsAnalysisRequest(
+                        resumeText = resumeText,
+                        targetJobDescription = null
+                    )
+                )
+            }
+            Log.i("ATS_AI", "AI PDF response (Full): $response")
+            response
+        } catch (e: Exception) {
+            Log.e("ATS_AI", "AI PDF analysis failed", e)
+            null
+        }
+    }
+
+    private fun applyAiResponse(response: AtsAnalysisResponse) {
+        atsScore = response.score
+        atsRating = response.rating
+
+        atsLayoutTips.clear()
+        atsKeywordTips.clear()
+        atsMetricTips.clear()
+        atsVerbTips.clear()
+
+        response.layoutSuggestions?.let { atsLayoutTips.addAll(it) }
+        response.keywordSuggestions?.let { atsKeywordTips.addAll(it) }
+        response.metricSuggestions?.let { atsMetricTips.addAll(it) }
+        response.verbSuggestions?.let { atsVerbTips.addAll(it) }
+    }
+
+    /**
+     * Serializes the user's profile data into a readable text format for AI analysis.
+     */
+    private fun buildResumeText(): String {
+        val sb = StringBuilder()
+        val info = basicInfo
+
+        // Header
+        if (info != null) {
+            if (!info.name.isNullOrBlank()) sb.appendLine(info.name)
+            val contactParts = listOfNotNull(
+                info.email, info.contactNumber, info.location,
+                info.linkedinUrl?.let { "LinkedIn: $it" },
+                info.githubUrl?.let { "GitHub: $it" },
+                info.portfolioUrl?.let { "Portfolio: $it" }
+            )
+            if (contactParts.isNotEmpty()) sb.appendLine(contactParts.joinToString(" | "))
+            sb.appendLine()
+
+            // Professional Summary
+            if (!info.professionalSummary.isNullOrBlank()) {
+                sb.appendLine("PROFESSIONAL SUMMARY")
+                sb.appendLine(info.professionalSummary)
+                sb.appendLine()
+            }
+        }
+
+        // Skills
+        if (skillGroups.isNotEmpty()) {
+            sb.appendLine("TECHNICAL SKILLS")
+            for (group in skillGroups) {
+                sb.appendLine("${group.label}: ${group.skills.joinToString(", ")}")
+            }
+            sb.appendLine()
+        }
+
+        // Experience
+        if (experiences.isNotEmpty()) {
+            sb.appendLine("PROFESSIONAL EXPERIENCE")
+            for (exp in experiences) {
+                sb.appendLine("${exp.company} — ${exp.title}")
+                val dates = listOfNotNull(exp.startDate, exp.endDate).joinToString(" – ")
+                if (dates.isNotBlank()) sb.appendLine(dates)
+                exp.bulletPoints?.forEach { bullet ->
+                    sb.appendLine("• $bullet")
+                }
+                sb.appendLine()
+            }
+        }
+
+        // Projects
+        if (projects.isNotEmpty()) {
+            sb.appendLine("PROJECTS")
+            for (proj in projects) {
+                sb.appendLine(proj.title)
+                if (!proj.techStack.isNullOrBlank()) sb.appendLine("Tech: ${proj.techStack}")
+                proj.bulletPoints?.forEach { bullet ->
+                    sb.appendLine("• $bullet")
+                }
+                sb.appendLine()
+            }
+        }
+
+        // Education
+        if (educations.isNotEmpty()) {
+            sb.appendLine("EDUCATION")
+            for (edu in educations) {
+                sb.appendLine("${edu.institution} — ${edu.degree}")
+                if (!edu.fieldOfStudy.isNullOrBlank()) sb.append(" in ${edu.fieldOfStudy}")
+                val dates = listOfNotNull(edu.startDate, edu.endDate).joinToString(" – ")
+                if (dates.isNotBlank()) sb.appendLine(dates)
+                val score = edu.score ?: edu.gpa?.toString()
+                if (!score.isNullOrBlank()) sb.appendLine("CGPA: $score")
+                sb.appendLine()
+            }
+        }
+
+        // Certifications
+        if (certifications.isNotEmpty()) {
+            sb.appendLine("CERTIFICATIONS")
+            for (cert in certifications) {
+                sb.append("${cert.title}")
+                if (!cert.issuer.isNullOrBlank()) sb.append(" — ${cert.issuer}")
+                sb.appendLine()
+            }
+            sb.appendLine()
+        }
+
+        return sb.toString()
     }
 
     fun exportPdf(context: Context, onComplete: (Boolean) -> Unit) {

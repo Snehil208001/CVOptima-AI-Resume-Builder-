@@ -29,9 +29,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import androidx.activity.compose.BackHandler
 import com.snehil.cvoptima.core.navigation.Screen
 import com.snehil.cvoptima.data.local.entity.*
 import com.snehil.cvoptima.ui.components.AppBottomNavigationBar
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.focus.FocusDirection
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -42,6 +51,19 @@ fun ResumeEditorScreen(
     val context = LocalContext.current
     var currentStep by remember { mutableStateOf(1) }
     val syncState by viewModel.syncState.collectAsState()
+
+    // Auto-save draft when navigating away or exiting the screen
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.saveDraft()
+        }
+    }
+
+    // Intercept system back press to save draft
+    BackHandler(enabled = true) {
+        viewModel.saveDraft()
+        navController.popBackStack()
+    }
 
     // Dialog state management
     var showEduDialog by remember { mutableStateOf(false) }
@@ -72,7 +94,7 @@ fun ResumeEditorScreen(
                     containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
                 ),
                 actions = {
-                    IconButton(onClick = { viewModel.loadData() }) {
+                    IconButton(onClick = { viewModel.loadData(forceRefresh = true) }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh Data")
                     }
                 }
@@ -169,7 +191,10 @@ fun ResumeEditorScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Button(
-                        onClick = { if (currentStep > 1) currentStep-- },
+                        onClick = { 
+                            viewModel.saveDraft()
+                            if (currentStep > 1) currentStep-- 
+                        },
                         enabled = currentStep > 1,
                         colors = ButtonDefaults.filledTonalButtonColors()
                     ) {
@@ -181,6 +206,7 @@ fun ResumeEditorScreen(
                     if (currentStep < 4) {
                         Button(
                             onClick = {
+                                viewModel.saveDraft()
                                 if (currentStep == 1) {
                                     val err = viewModel.validateInputs()
                                     if (err != null) {
@@ -248,6 +274,7 @@ fun ResumeEditorScreen(
                 } else {
                     viewModel.educations.add(newEdu)
                 }
+                viewModel.saveDraft()
                 showEduDialog = false
             }
         )
@@ -265,6 +292,7 @@ fun ResumeEditorScreen(
                 } else {
                     viewModel.experiences.add(newExp)
                 }
+                viewModel.saveDraft()
                 showExpDialog = false
             }
         )
@@ -282,6 +310,7 @@ fun ResumeEditorScreen(
                 } else {
                     viewModel.projects.add(newProj)
                 }
+                viewModel.saveDraft()
                 showProjDialog = false
             }
         )
@@ -299,6 +328,7 @@ fun ResumeEditorScreen(
                 } else {
                     viewModel.certifications.add(newCert)
                 }
+                viewModel.saveDraft()
                 showCertDialog = false
             }
         )
@@ -330,6 +360,7 @@ fun ResumeEditorScreen(
                                     resumeId = 1L
                                 )
                             )
+                            viewModel.saveDraft()
                         }
                         showAddSkillGroupDialog = false
                     }
@@ -421,227 +452,264 @@ fun StepProgressBar(currentStep: Int) {
 
 @Composable
 fun Step1BasicInfo(viewModel: ResumeEditorViewModel) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+    val focusRequesterContact = remember { FocusRequester() }
+    val focusRequesterLocation = remember { FocusRequester() }
+    val focusRequesterYears = remember { FocusRequester() }
+    val focusRequesterSpec = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .navigationBarsPadding(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            Text(
-                "Personal Details",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
+        Text(
+            "Personal Details",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
 
-        item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                OutlinedTextField(
+                    value = viewModel.name,
+                    onValueChange = { viewModel.name = it },
+                    label = { Text("Full Name *") },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = viewModel.email,
+                    onValueChange = { viewModel.email = it },
+                    label = { Text("Email Address *") },
+                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
-                        value = viewModel.name,
-                        onValueChange = { viewModel.name = it },
-                        label = { Text("Full Name *") },
-                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = viewModel.email,
-                        onValueChange = { viewModel.email = it },
-                        label = { Text("Email Address *") },
-                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
                     OutlinedTextField(
                         value = viewModel.contactNumber,
                         onValueChange = { viewModel.contactNumber = it },
-                        label = { Text("Contact Number *") },
+                        label = { Text("Contact *") },
                         leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequesterContact),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            keyboardType = KeyboardType.Phone
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { focusRequesterLocation.requestFocus() }
+                        )
                     )
 
                     OutlinedTextField(
                         value = viewModel.location,
                         onValueChange = { viewModel.location = it },
-                        label = { Text("Location (e.g. Pune, India) *") },
+                        label = { Text("Location *") },
                         leadingIcon = { Icon(Icons.Default.Place, contentDescription = null) },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequesterLocation),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                        )
                     )
                 }
             }
         }
 
-        item {
-            Text(
-                "Links & Socials",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
+        Text(
+            "Links & Socials",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
 
-        item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedTextField(
-                        value = viewModel.linkedinUrl,
-                        onValueChange = { viewModel.linkedinUrl = it },
-                        label = { Text("LinkedIn URL") },
-                        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                OutlinedTextField(
+                    value = viewModel.linkedinUrl,
+                    onValueChange = { viewModel.linkedinUrl = it },
+                    label = { Text("LinkedIn URL") },
+                    leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-                    OutlinedTextField(
-                        value = viewModel.githubUrl,
-                        onValueChange = { viewModel.githubUrl = it },
-                        label = { Text("GitHub URL") },
-                        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                OutlinedTextField(
+                    value = viewModel.githubUrl,
+                    onValueChange = { viewModel.githubUrl = it },
+                    label = { Text("GitHub URL") },
+                    leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-                    OutlinedTextField(
-                        value = viewModel.portfolioUrl,
-                        onValueChange = { viewModel.portfolioUrl = it },
-                        label = { Text("Portfolio URL") },
-                        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                OutlinedTextField(
+                    value = viewModel.portfolioUrl,
+                    onValueChange = { viewModel.portfolioUrl = it },
+                    label = { Text("Portfolio URL") },
+                    leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
 
-        item {
-            Text(
-                "AI Summary Assistant",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
+        Text(
+            "AI Summary Assistant",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
 
-        item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedTextField(
                         value = viewModel.yearsOfExp,
                         onValueChange = { viewModel.yearsOfExp = it },
-                        label = { Text("Years of Experience (e.g., 3 years)") },
+                        label = { Text("Experience") },
                         leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequesterYears),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { focusRequesterSpec.requestFocus() }
+                        )
                     )
                     OutlinedTextField(
                         value = viewModel.specialization,
                         onValueChange = { viewModel.specialization = it },
-                        label = { Text("Specialization (e.g., Android & Kotlin)") },
+                        label = { Text("Specialization") },
                         leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = viewModel.targetRole,
-                        onValueChange = { viewModel.targetRole = it },
-                        label = { Text("Seeking Role (e.g., Senior Android Developer)") },
-                        leadingIcon = { Icon(Icons.Default.Work, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = viewModel.primaryTechnologies,
-                        onValueChange = { viewModel.primaryTechnologies = it },
-                        label = { Text("Primary Technologies (e.g., Kotlin, Java, SQL)") },
-                        leadingIcon = { Icon(Icons.Default.Build, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequesterSpec),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                        )
                     )
                 }
+                OutlinedTextField(
+                    value = viewModel.targetRole,
+                    onValueChange = { viewModel.targetRole = it },
+                    label = { Text("Seeking Role (e.g., Senior Android Developer)") },
+                    leadingIcon = { Icon(Icons.Default.Work, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = viewModel.primaryTechnologies,
+                    onValueChange = { viewModel.primaryTechnologies = it },
+                    label = { Text("Primary Technologies (e.g., Kotlin, Java, SQL)") },
+                    leadingIcon = { Icon(Icons.Default.Build, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
 
-        item {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    viewModel.autoGenerateSummary = !viewModel.autoGenerateSummary
+                    if (viewModel.autoGenerateSummary) {
+                        viewModel.generateAiSummary()
+                    }
+                }
+                .padding(vertical = 8.dp)
+        ) {
+            Checkbox(
+                checked = viewModel.autoGenerateSummary,
+                onCheckedChange = {
+                    viewModel.autoGenerateSummary = it
+                    if (it) {
+                        viewModel.generateAiSummary()
+                    }
+                }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                Icons.Default.Star,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Auto-Generate with AI Professional Summary")
+        }
+
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        viewModel.autoGenerateSummary = !viewModel.autoGenerateSummary
-                        if (viewModel.autoGenerateSummary) {
-                            viewModel.generateAiSummary()
-                        }
-                    }
-                    .padding(vertical = 8.dp)
+                    .padding(16.dp)
             ) {
-                Checkbox(
-                    checked = viewModel.autoGenerateSummary,
-                    onCheckedChange = {
-                        viewModel.autoGenerateSummary = it
-                        if (it) {
-                            viewModel.generateAiSummary()
-                        }
-                    }
+                OutlinedTextField(
+                    value = viewModel.professionalSummary,
+                    onValueChange = { viewModel.professionalSummary = it },
+                    label = { Text("Professional Summary") },
+                    minLines = 4,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(
-                    Icons.Default.Star,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Auto-Generate with AI Professional Summary")
-            }
-        }
-
-        item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    OutlinedTextField(
-                        value = viewModel.professionalSummary,
-                        onValueChange = { viewModel.professionalSummary = it },
-                        label = { Text("Professional Summary") },
-                        minLines = 4,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
             }
         }
     }
@@ -729,7 +797,7 @@ fun Step2Experiences(
                                 IconButton(onClick = { onEdit(exp) }) {
                                     Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
                                 }
-                                IconButton(onClick = { viewModel.experiences.remove(exp) }) {
+                                IconButton(onClick = { viewModel.experiences.remove(exp); viewModel.saveDraft() }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                                 }
                             }
@@ -789,7 +857,7 @@ fun Step2Educations(
                                 IconButton(onClick = { onEdit(edu) }) {
                                     Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
                                 }
-                                IconButton(onClick = { viewModel.educations.remove(edu) }) {
+                                IconButton(onClick = { viewModel.educations.remove(edu); viewModel.saveDraft() }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                                 }
                             }
@@ -853,7 +921,7 @@ fun Step2Projects(
                                 IconButton(onClick = { onEdit(proj) }) {
                                     Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
                                 }
-                                IconButton(onClick = { viewModel.projects.remove(proj) }) {
+                                IconButton(onClick = { viewModel.projects.remove(proj); viewModel.saveDraft() }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                                 }
                             }
@@ -917,7 +985,7 @@ fun Step2Certifications(
                                 IconButton(onClick = { onEdit(cert) }) {
                                     Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
                                 }
-                                IconButton(onClick = { viewModel.certifications.remove(cert) }) {
+                                IconButton(onClick = { viewModel.certifications.remove(cert); viewModel.saveDraft() }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                                 }
                             }
@@ -1197,6 +1265,12 @@ fun EducationAddEditDialog(
     var score by remember { mutableStateOf(edu?.score ?: edu?.gpa?.toString() ?: "") }
     var location by remember { mutableStateOf(edu?.location ?: "") }
 
+    val focusRequester1 = remember { FocusRequester() }
+    val focusRequester2 = remember { FocusRequester() }
+    val focusRequester3 = remember { FocusRequester() }
+    val focusRequester4 = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (edu != null) "Edit Education" else "Add Education") },
@@ -1205,13 +1279,59 @@ fun EducationAddEditDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(value = institution, onValueChange = { institution = it }, label = { Text("Institution *") })
-                OutlinedTextField(value = degree, onValueChange = { degree = it }, label = { Text("Degree *") })
-                OutlinedTextField(value = fieldOfStudy, onValueChange = { fieldOfStudy = it }, label = { Text("Field of Study") })
-                OutlinedTextField(value = startDate, onValueChange = { startDate = it }, label = { Text("Start Date (e.g. 2021)") })
-                OutlinedTextField(value = endDate, onValueChange = { endDate = it }, label = { Text("End Date (e.g. 2025)") })
-                OutlinedTextField(value = score, onValueChange = { score = it }, label = { Text("GPA/Score") })
-                OutlinedTextField(value = location, onValueChange = { location = it }, label = { Text("Location") })
+                OutlinedTextField(value = institution, onValueChange = { institution = it }, label = { Text("Institution *") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = degree, onValueChange = { degree = it }, label = { Text("Degree *") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = fieldOfStudy, onValueChange = { fieldOfStudy = it }, label = { Text("Field of Study") }, modifier = Modifier.fillMaxWidth())
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = startDate,
+                        onValueChange = { startDate = it },
+                        label = { Text("Start Date") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester1),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusRequester2.requestFocus() })
+                    )
+                    OutlinedTextField(
+                        value = endDate,
+                        onValueChange = { endDate = it },
+                        label = { Text("End Date") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester2),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusRequester3.requestFocus() })
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = score,
+                        onValueChange = { score = it },
+                        label = { Text("GPA/Score") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester3),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusRequester4.requestFocus() })
+                    )
+                    OutlinedTextField(
+                        value = location,
+                        onValueChange = { location = it },
+                        label = { Text("Location") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester4),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                    )
+                }
             }
         },
         confirmButton = {
@@ -1262,6 +1382,12 @@ fun ExperienceAddEditDialog(
     var type by remember { mutableStateOf(exp?.type ?: "Onsite") } // e.g. Remote, Hybrid, Onsite
     val bulletPoints = remember { mutableStateListOf<String>().apply { addAll(exp?.bulletPoints ?: emptyList()) } }
 
+    val focusRequesterStart = remember { FocusRequester() }
+    val focusRequesterEnd = remember { FocusRequester() }
+    val focusRequesterLocation = remember { FocusRequester() }
+    val focusRequesterType = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (exp != null) "Edit Experience" else "Add Experience") },
@@ -1270,19 +1396,76 @@ fun ExperienceAddEditDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(value = company, onValueChange = { company = it }, label = { Text("Company *") })
-                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title/Role *") })
-                OutlinedTextField(value = startDate, onValueChange = { startDate = it }, label = { Text("Start Date (e.g. Oct 2022)") })
-                if (!isCurrentRole) {
-                    OutlinedTextField(value = endDate, onValueChange = { endDate = it }, label = { Text("End Date (e.g. Present)") })
+                OutlinedTextField(value = company, onValueChange = { company = it }, label = { Text("Company *") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title/Role *") }, modifier = Modifier.fillMaxWidth())
+                if (isCurrentRole) {
+                    OutlinedTextField(
+                        value = startDate,
+                        onValueChange = { startDate = it },
+                        label = { Text("Start Date *") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequesterStart),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusRequesterLocation.requestFocus() })
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = startDate,
+                            onValueChange = { startDate = it },
+                            label = { Text("Start Date *") },
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(focusRequesterStart),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            keyboardActions = KeyboardActions(onNext = { focusRequesterEnd.requestFocus() })
+                        )
+                        OutlinedTextField(
+                            value = endDate,
+                            onValueChange = { endDate = it },
+                            label = { Text("End Date") },
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(focusRequesterEnd),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            keyboardActions = KeyboardActions(onNext = { focusRequesterLocation.requestFocus() })
+                        )
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = isCurrentRole, onCheckedChange = { isCurrentRole = it })
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("I currently work in this role")
                 }
-                OutlinedTextField(value = location, onValueChange = { location = it }, label = { Text("Location") })
-                OutlinedTextField(value = type, onValueChange = { type = it }, label = { Text("Role Type (Remote, Onsite, Hybrid)") })
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = location,
+                        onValueChange = { location = it },
+                        label = { Text("Location") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequesterLocation),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusRequesterType.requestFocus() })
+                    )
+                    OutlinedTextField(
+                        value = type,
+                        onValueChange = { type = it },
+                        label = { Text("Type") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequesterType),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Bullet Description Points", fontWeight = FontWeight.Bold)
@@ -1355,6 +1538,10 @@ fun ProjectAddEditDialog(
     var techStack by remember { mutableStateOf(proj?.techStack ?: "") }
     val bulletPoints = remember { mutableStateListOf<String>().apply { addAll(proj?.bulletPoints ?: emptyList()) } }
 
+    val focusRequesterDate = remember { FocusRequester() }
+    val focusRequesterTech = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (proj != null) "Edit Project" else "Add Project") },
@@ -1363,10 +1550,33 @@ fun ProjectAddEditDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Project Title *") })
-                OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("Project Link") })
-                OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Date/Timeline") })
-                OutlinedTextField(value = techStack, onValueChange = { techStack = it }, label = { Text("Technologies (comma-separated)") })
+                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Project Title *") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("Project Link") }, modifier = Modifier.fillMaxWidth())
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = date,
+                        onValueChange = { date = it },
+                        label = { Text("Timeline") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequesterDate),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusRequesterTech.requestFocus() })
+                    )
+                    OutlinedTextField(
+                        value = techStack,
+                        onValueChange = { techStack = it },
+                        label = { Text("Technologies") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequesterTech),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Bullet Project Details", fontWeight = FontWeight.Bold)
@@ -1435,6 +1645,10 @@ fun CertificationAddEditDialog(
     var date by remember { mutableStateOf(cert?.date ?: "") }
     val bulletPoints = remember { mutableStateListOf<String>().apply { addAll(cert?.bulletPoints ?: emptyList()) } }
 
+    val focusRequesterLink = remember { FocusRequester() }
+    val focusRequesterDate = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (cert != null) "Edit Certification/Achievement" else "Add Certification/Achievement") },
@@ -1443,10 +1657,33 @@ fun CertificationAddEditDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title *") })
-                OutlinedTextField(value = issuer, onValueChange = { issuer = it }, label = { Text("Issuer") })
-                OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("Link") })
-                OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Date/Year") })
+                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title *") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = issuer, onValueChange = { issuer = it }, label = { Text("Issuer") }, modifier = Modifier.fillMaxWidth())
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = link,
+                        onValueChange = { link = it },
+                        label = { Text("Link") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequesterLink),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusRequesterDate.requestFocus() })
+                    )
+                    OutlinedTextField(
+                        value = date,
+                        onValueChange = { date = it },
+                        label = { Text("Date/Year") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequesterDate),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Bullet Details", fontWeight = FontWeight.Bold)

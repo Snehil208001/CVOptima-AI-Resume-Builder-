@@ -5,11 +5,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -21,7 +18,8 @@ fun AppLogo(
     size: Dp
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
-    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+    val secondaryColor = MaterialTheme.colorScheme.secondary
+    val outlineColor = MaterialTheme.colorScheme.outlineVariant
 
     Canvas(
         modifier = modifier.size(size)
@@ -29,160 +27,144 @@ fun AppLogo(
         val w = this.size.width
         val h = this.size.height
 
-        // 1. Draw smooth rounded bounding box with a linear gradient
+        // Premium linear gradient for the AI elements
         val gradient = Brush.linearGradient(
-            colors = listOf(primaryColor, tertiaryColor),
+            colors = listOf(primaryColor, secondaryColor),
             start = Offset(0f, 0f),
             end = Offset(w, h)
         )
-        drawRoundRect(
+
+        // Draw an outer minimalist document frame with a folded top-right corner
+        val frameW = w * 0.65f
+        val frameH = h * 0.85f
+        val left = (w - frameW) / 2f
+        val top = (h - frameH) / 2f
+        val right = left + frameW
+        val bottom = top + frameH
+        val foldSize = w * 0.18f
+
+        // Document outline path with folded top-right corner
+        val docOutlinePath = Path().apply {
+            moveTo(left, bottom - w * 0.08f)
+            // Bottom-left corner
+            quadraticTo(left, bottom, left + w * 0.08f, bottom)
+            
+            // Bottom line
+            lineTo(right - w * 0.08f, bottom)
+            // Bottom-right corner
+            quadraticTo(right, bottom, right, bottom - w * 0.08f)
+            
+            // Right line
+            lineTo(right, top + foldSize)
+            
+            // Diagonal fold line
+            lineTo(right - foldSize, top)
+            
+            // Top line
+            lineTo(left + w * 0.08f, top)
+            // Top-left corner
+            quadraticTo(left, top, left, top + w * 0.08f)
+            
+            close()
+        }
+
+        // Draw document background outline with soft alpha
+        drawPath(
+            path = docOutlinePath,
+            color = outlineColor.copy(alpha = 0.15f)
+        )
+
+        // Draw document border stroke
+        drawPath(
+            path = docOutlinePath,
             brush = gradient,
-            cornerRadius = CornerRadius(w * 0.24f)
+            style = Stroke(width = w * 0.035f, cap = StrokeCap.Round)
         )
 
-        // 2. Draw centered stylized document vector icon
-        val docW = w * 0.44f
-        val docH = h * 0.56f
-        val docLeft = w * 0.28f
-        val docTop = h * 0.22f
-        val docRight = docLeft + docW
-        val docBottom = docTop + docH
-        val foldSize = w * 0.14f
-
-        val documentPath = Path().apply {
-            moveTo(docLeft, docBottom)
-            lineTo(docRight, docBottom)
-            lineTo(docRight, docTop + foldSize)
-            lineTo(docRight - foldSize, docTop)
-            lineTo(docLeft, docTop)
-            close()
-        }
-
-        // Draw document base
-        drawPath(
-            path = documentPath,
-            color = Color.White.copy(alpha = 0.95f)
-        )
-
-        // Draw folded corner back side
+        // Draw the folded corner back flap
         val foldPath = Path().apply {
-            moveTo(docRight - foldSize, docTop)
-            lineTo(docRight - foldSize, docTop + foldSize)
-            lineTo(docRight, docTop + foldSize)
+            moveTo(right - foldSize, top)
+            lineTo(right - foldSize, top + foldSize - w * 0.04f)
+            quadraticTo(right - foldSize, top + foldSize, right - foldSize + w * 0.04f, top + foldSize)
+            lineTo(right, top + foldSize)
+        }
+        drawPath(
+            path = foldPath,
+            brush = gradient,
+            style = Stroke(width = w * 0.035f, cap = StrokeCap.Round)
+        )
+
+        // Draw elegant minimalist lines representing structured data (resume content)
+        val lineY1 = top + frameH * 0.35f
+        val lineY2 = top + frameH * 0.5f
+        val lineY3 = top + frameH * 0.65f
+        val lineStartX = left + frameW * 0.2f
+        val lineThickness = w * 0.025f
+
+        // Line 1 (longer)
+        drawLine(
+            color = primaryColor.copy(alpha = 0.25f),
+            start = Offset(lineStartX, lineY1),
+            end = Offset(right - frameW * 0.4f, lineY1),
+            strokeWidth = lineThickness,
+            cap = StrokeCap.Round
+        )
+
+        // Line 2 (medium)
+        drawLine(
+            color = primaryColor.copy(alpha = 0.25f),
+            start = Offset(lineStartX, lineY2),
+            end = Offset(right - frameW * 0.3f, lineY2),
+            strokeWidth = lineThickness,
+            cap = StrokeCap.Round
+        )
+
+        // Line 3 (shorter)
+        drawLine(
+            color = primaryColor.copy(alpha = 0.25f),
+            start = Offset(lineStartX, lineY3),
+            end = Offset(right - frameW * 0.5f, lineY3),
+            strokeWidth = lineThickness,
+            cap = StrokeCap.Round
+        )
+
+        // Draw a glowing, premium four-pointed AI Star overlapping the bottom right or center
+        val starCx = right - frameW * 0.2f
+        val starCy = bottom - frameH * 0.25f
+        val starRadiusOuter = w * 0.16f
+
+        val starPath = Path().apply {
+            moveTo(starCx, starCy - starRadiusOuter)
+            quadraticTo(starCx, starCy, starCx + starRadiusOuter, starCy)
+            quadraticTo(starCx, starCy, starCx, starCy + starRadiusOuter)
+            quadraticTo(starCx, starCy, starCx - starRadiusOuter, starCy)
+            quadraticTo(starCx, starCy, starCx, starCy - starRadiusOuter)
             close()
         }
+
+        // Draw AI Star fill
         drawPath(
-            path = foldPath,
-            color = Color.White
-        )
-        // Fold shadow layer
-        drawPath(
-            path = foldPath,
-            color = Color.Black.copy(alpha = 0.12f)
+            path = starPath,
+            brush = gradient
         )
 
-        // Draw text lines inside the document
-        val lineStrokeWidth = w * 0.026f
-        val lineAlpha = 0.35f
-        val lineColor = primaryColor.copy(alpha = lineAlpha)
+        // Small decorative satellite star for depth
+        val satCx = starCx - w * 0.2f
+        val satCy = starCy - h * 0.15f
+        val satRadiusOuter = w * 0.06f
 
-        // Line 1
-        drawLine(
-            color = lineColor,
-            start = Offset(docLeft + docW * 0.18f, docTop + docH * 0.36f),
-            end = Offset(docRight - docW * 0.18f, docTop + docH * 0.36f),
-            strokeWidth = lineStrokeWidth,
-            cap = StrokeCap.Round
-        )
-
-        // Line 2
-        drawLine(
-            color = lineColor,
-            start = Offset(docLeft + docW * 0.18f, docTop + docH * 0.52f),
-            end = Offset(docRight - docW * 0.42f, docTop + docH * 0.52f),
-            strokeWidth = lineStrokeWidth,
-            cap = StrokeCap.Round
-        )
-
-        // Line 3
-        drawLine(
-            color = lineColor,
-            start = Offset(docLeft + docW * 0.18f, docTop + docH * 0.68f),
-            end = Offset(docRight - docW * 0.28f, docTop + docH * 0.68f),
-            strokeWidth = lineStrokeWidth,
-            cap = StrokeCap.Round
-        )
-
-        // 3. Draw interlaced connected network node vectors (AI components)
-        // Define node coordinate positions
-        val nodeA = Offset(w * 0.20f, h * 0.35f)
-        val nodeB = Offset(w * 0.38f, h * 0.14f)
-        val nodeC = Offset(w * 0.13f, h * 0.62f)
-        val nodeD = Offset(w * 0.81f, h * 0.46f)
-        val nodeE = Offset(w * 0.64f, h * 0.83f)
-
-        val linkColor = Color.White.copy(alpha = 0.55f)
-        val linkStrokeWidth = w * 0.015f
-
-        // Draw connection lines
-        drawLine(
-            color = linkColor,
-            start = nodeA,
-            end = nodeB,
-            strokeWidth = linkStrokeWidth,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = linkColor,
-            start = nodeA,
-            end = nodeC,
-            strokeWidth = linkStrokeWidth,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = linkColor,
-            start = nodeC,
-            end = Offset(docLeft, h * 0.62f),
-            strokeWidth = linkStrokeWidth,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = linkColor,
-            start = nodeD,
-            end = nodeE,
-            strokeWidth = linkStrokeWidth,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = linkColor,
-            start = nodeD,
-            end = Offset(docRight, h * 0.46f),
-            strokeWidth = linkStrokeWidth,
-            cap = StrokeCap.Round
-        )
-
-        // Draw glowing nodes (circles)
-        val nodes = listOf(nodeA, nodeB, nodeC, nodeD, nodeE)
-        nodes.forEach { center ->
-            // Outer glow ring
-            drawCircle(
-                color = Color.White.copy(alpha = 0.35f),
-                radius = w * 0.045f,
-                center = center
-            )
-            // Inner node dot
-            drawCircle(
-                color = Color.White,
-                radius = w * 0.022f,
-                center = center
-            )
-            // Inner node dot border for contrast
-            drawCircle(
-                color = primaryColor.copy(alpha = 0.8f),
-                radius = w * 0.022f,
-                center = center,
-                style = Stroke(width = w * 0.005f)
-            )
+        val satPath = Path().apply {
+            moveTo(satCx, satCy - satRadiusOuter)
+            quadraticTo(satCx, satCy, satCx + satRadiusOuter, satCy)
+            quadraticTo(satCx, satCy, satCx, satCy + satRadiusOuter)
+            quadraticTo(satCx, satCy, satCx - satRadiusOuter, satCy)
+            quadraticTo(satCx, satCy, satCx, satCy - satRadiusOuter)
+            close()
         }
+
+        drawPath(
+            path = satPath,
+            brush = gradient
+        )
     }
 }
