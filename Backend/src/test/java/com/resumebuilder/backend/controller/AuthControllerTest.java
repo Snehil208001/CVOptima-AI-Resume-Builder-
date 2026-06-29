@@ -106,6 +106,11 @@ class AuthControllerTest {
                 .password("pass1")
                 .build();
 
+        org.springframework.security.core.Authentication authentication = mock(org.springframework.security.core.Authentication.class);
+        org.springframework.security.core.userdetails.UserDetails userDetails = mock(org.springframework.security.core.userdetails.UserDetails.class);
+        when(userDetails.getUsername()).thenReturn("user1");
+        when(authentication.getPrincipal()).thenReturn(userDetails);
+        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(authentication);
         when(jwtTokenProvider.generateToken("user1")).thenReturn("mockToken");
 
         mockMvc.perform(post("/api/v1/auth/login")

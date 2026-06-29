@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
@@ -16,12 +17,15 @@ import java.util.function.Function;
 @Component
 public class JwtTokenProvider {
 
-    // Must be at least 256 bits long for HS256 signature algorithm
-    private static final String SECRET_STRING = "your-very-long-and-secure-secret-key-that-is-at-least-256-bits-long-resume-builder";
-    private final Key key = Keys.hmacShaKeyFor(SECRET_STRING.getBytes());
-    
-    // 24 hours token expiration
-    private static final long EXPIRATION_TIME = 86400000;
+    private final Key key;
+    private final long expirationTime;
+
+    public JwtTokenProvider(
+            @Value("${app.jwt.secret}") String secretString,
+            @Value("${app.jwt.expiration-ms}") long expirationTime) {
+        this.key = Keys.hmacShaKeyFor(secretString.getBytes());
+        this.expirationTime = expirationTime;
+    }
 
     public String generateToken(String username) {
         Map<String, Object> claims = new HashMap<>();
@@ -33,7 +37,7 @@ public class JwtTokenProvider {
                 .setClaims(claims)
                 .setSubject(subject)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
+                .setExpiration(new Date(System.currentTimeMillis() + expirationTime))
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }

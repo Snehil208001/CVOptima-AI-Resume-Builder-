@@ -4,14 +4,39 @@ spring:
   profiles:
     active: dev # Dev profile active by default, connecting to PostgreSQL
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
   ai:
     openai:
-      api-key: ${OPENAI_API_KEY}
+      api-key: ${OPENAI_API_KEY:sk-dummy-local-testing-key-value}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET_KEY:a768de67145e65024f7b57c26c425ec177e2c4e8a768de67145e65024f7b57c26c425ec177e2c4e8}
+    expiration-ms: ${JWT_EXPIRATION:86400000}
 
 logging:
   level:
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      openaiService:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10000
+        permittedNumberOfCallsInHalfOpenState: 3
+  retry:
+    instances:
+      openaiService:
+        maxAttempts: 3
+        waitDuration: 2000
 
 ---
 # Dev Profile - PostgreSQL Configuration (Docker Compose)
@@ -63,3 +88,49 @@ spring:
       hibernate:
         format_sql: true
         use_sql_comments: true
+
+---
+# Production Profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:resumedb}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        use_sql_comments: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: resume-builder-backend
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+

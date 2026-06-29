@@ -13,12 +13,16 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 import com.resumebuilder.backend.repository.UserRepository;
+import com.resumebuilder.backend.repository.AiTaskStateRepository;
+import com.resumebuilder.backend.entity.AITaskState;
+import java.util.Optional;
 
 class AiResumeServiceTest {
 
     private ChatClient.Builder chatClientBuilder;
     private ChatClient chatClient;
     private UserRepository userRepository;
+    private AiTaskStateRepository aiTaskStateRepository;
     private AiResumeService aiResumeService;
 
     @BeforeEach
@@ -27,9 +31,11 @@ class AiResumeServiceTest {
         // Using deep stubs to easily mock the fluent ChatClient API
         chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         userRepository = mock(UserRepository.class);
+        aiTaskStateRepository = mock(AiTaskStateRepository.class);
 
+        when(aiTaskStateRepository.findById(anyString())).thenReturn(Optional.empty());
         when(chatClientBuilder.build()).thenReturn(chatClient);
-        aiResumeService = new AiResumeService(chatClientBuilder, userRepository, "valid-test-key-preventing-fallback");
+        aiResumeService = new AiResumeService(chatClientBuilder, userRepository, aiTaskStateRepository, "valid-test-key-preventing-fallback");
     }
 
     @Test

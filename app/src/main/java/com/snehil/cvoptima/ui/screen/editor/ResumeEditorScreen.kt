@@ -204,24 +204,54 @@ fun ResumeEditorScreen(
                     }
 
                     if (currentStep < 4) {
-                        Button(
-                            onClick = {
-                                viewModel.saveDraft()
-                                if (currentStep == 1) {
-                                    val err = viewModel.validateInputs()
-                                    if (err != null) {
-                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.saveAndSync { success, message ->
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                enabled = syncState !is SyncState.Syncing,
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                if (syncState is SyncState.Syncing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Saving...")
+                                } else {
+                                    Icon(Icons.Default.Save, contentDescription = "Save Progress", modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Save")
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    viewModel.saveDraft()
+                                    if (currentStep == 1) {
+                                        val err = viewModel.validateInputs()
+                                        if (err != null) {
+                                            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                        } else {
+                                            currentStep++
+                                        }
                                     } else {
                                         currentStep++
                                     }
-                                } else {
-                                    currentStep++
-                                }
+                                },
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Next")
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(Icons.Default.ArrowForward, contentDescription = "Next")
                             }
-                        ) {
-                            Text("Next")
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.ArrowForward, contentDescription = "Next")
                         }
                     } else {
                         Button(
@@ -238,7 +268,8 @@ fun ResumeEditorScreen(
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
                             ),
-                            enabled = syncState !is SyncState.Syncing
+                            enabled = syncState !is SyncState.Syncing,
+                            shape = RoundedCornerShape(12.dp)
                         ) {
                             if (syncState is SyncState.Syncing) {
                                 CircularProgressIndicator(

@@ -10,3 +10,15 @@
 #-keepclassmembers class fqcn.of.javascript.interface.for.webview {
 #   public *;
 #}
+
+# Keep all data remote network models
+-keep class com.snehil.cvoptima.data.remote.model.** { *; }
+
+# Keep all local Room database entity structures
+-keep class com.snehil.cvoptima.data.local.entity.** { *; }
+
+# Keep all retrofitted API interface models to safeguard network signatures
+-keep interface com.snehil.cvoptima.data.remote.** { *; }
+-keepclassmembers interface com.snehil.cvoptima.data.remote.** {
+    <methods>;
+}

@@ -1,30 +1,69 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: resume_postgres
+  cvoptima-db:
+    image: postgres:15-alpine
+    container_name: cvoptima-db
     environment:
       POSTGRES_DB: resumedb
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-    ports:
-      - "5433:5432"
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_prod_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432" # Maps port 5433 on your host machine to port 5432 inside the container
+    networks:
+      - cvoptima-net
+    healthcheck:
+      # Use the default postgres superuser internally for the initialization health check to avoid authentication race conditions
+      test: ["CMD-SHELL", "pg_isready -U postgres -d resumedb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: resume_pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@resumebuilder.com
-      PGADMIN_DEFAULT_PASSWORD: admin
+  cvoptima-cache:
+    image: redis:7-alpine
+    container_name: cvoptima-cache
+    networks:
+      - cvoptima-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  cvoptima-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cvoptima-backend
     ports:
-      - "5050:80"
+      - "8080:8080"
     depends_on:
-      - postgres
+      cvoptima-db:
+        condition: service_healthy
+      cvoptima-cache:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - DB_HOST=cvoptima-db
+      - DB_PORT=5432
+      - DB_NAME=resumedb
+      - DB_USERNAME=${DB_USERNAME:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-password}
+      - REDIS_HOST=cvoptima-cache
+      - REDIS_PORT=6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-dummy-local-testing-key-value}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-a768de67145e65024f7b57c26c425ec177e2c4e8a768de67145e65024f7b57c26c425ec177e2c4e8}
+    networks:
+      - cvoptima-net
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  postgres_prod_data:
+
+networks:
+  cvoptima-net:
+    driver: bridge

@@ -15,6 +15,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -35,6 +36,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                 .requestMatchers("/api/v1/auth/**").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
                 .requestMatchers("/api/v1/**").authenticated()
                 .anyRequest().permitAll()
             )
@@ -54,6 +56,7 @@ public class SecurityConfig {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .authenticationProvider(authenticationProvider())
+            .addFilterBefore(new RateLimitingFilter(), SecurityContextHolderFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

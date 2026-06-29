@@ -6,11 +6,13 @@ import com.resumebuilder.backend.dto.ExperienceOptimizationRequest;
 import com.resumebuilder.backend.dto.SummaryGenerationRequest;
 import com.resumebuilder.backend.entity.*;
 import com.resumebuilder.backend.repository.UserRepository;
+import com.resumebuilder.backend.repository.AiTaskStateRepository;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
-
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -31,6 +33,7 @@ public class AiResumeService {
 
     private final ChatClient chatClient;
     private final UserRepository userRepository;
+    private final AiTaskStateRepository aiTaskStateRepository;
     private final String apiKey;
     private final Map<String, SseEmitter> emitterMap = new ConcurrentHashMap<>();
     private final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
@@ -84,9 +87,11 @@ public class AiResumeService {
 
     public AiResumeService(ChatClient.Builder chatClientBuilder,
                            UserRepository userRepository,
+                           AiTaskStateRepository aiTaskStateRepository,
                            @org.springframework.beans.factory.annotation.Value("${spring.ai.openai.api-key:}") String apiKey) {
         this.chatClient = chatClientBuilder.build();
         this.userRepository = userRepository;
+        this.aiTaskStateRepository = aiTaskStateRepository;
         this.apiKey = apiKey != null ? apiKey : "";
     }
 
@@ -315,6 +320,8 @@ public class AiResumeService {
         return startOptimizationTask(request, null);
     }
 
+    @CircuitBreaker(name = "openaiService", fallbackMethod = "handleOpenAiFallback")
+    @Retry(name = "openaiService")
     public String startOptimizationTask(ExperienceOptimizationRequest request, String username) {
         if (request.getRawExperience() == null || request.getRawExperience().trim().isEmpty()) {
             throw new IllegalArgumentException("Raw experience text cannot be null or empty");
@@ -324,7 +331,17 @@ public class AiResumeService {
         }
 
         String taskId = UUID.randomUUID().toString();
-        
+
+        // Persist initial state in Redis
+        AITaskState taskState = AITaskState.builder()
+                .taskId(taskId)
+                .username(username)
+                .status("PROCESSING")
+                .message("Task initiated")
+                .timestamp(System.currentTimeMillis())
+                .build();
+        aiTaskStateRepository.save(taskState);
+
         // Emitter timeout set to 3 minutes
         SseEmitter emitter = new SseEmitter(180000L);
         emitterMap.put(taskId, emitter);
@@ -347,15 +364,27 @@ public class AiResumeService {
                             "• Integrated Jetpack Compose UI with unidirectional data flow (UDF), improving developer productivity and rendering performance.\n" +
                             "• Orchestrated background tasks using Kotlin Coroutines and WorkManager, resulting in a 40% reduction in database-related main-thread blocks.\n" +
                             "• Implemented robust error-handling policies and local DB fallback mechanisms, raising application reliability to 99.8% crash-free sessions.";
-                    
+
                     String[] words = mockResponse.split(" ");
+                    int count = 0;
                     for (String word : words) {
                         emitter.send(SseEmitter.event()
                                 .name("token")
                                 .data(word + " "));
                         Thread.sleep(85); // Simulate typing speed
+                        count++;
+                        if (count % 5 == 0) {
+                            AITaskState current = aiTaskStateRepository.findById(taskId).orElse(taskState);
+                            current.setMessage(String.format("Generating tokens: %d words emitted", count));
+                            aiTaskStateRepository.save(current);
+                        }
                     }
-                    
+
+                    AITaskState finalState = aiTaskStateRepository.findById(taskId).orElse(taskState);
+                    finalState.setStatus("COMPLETED");
+                    finalState.setMessage("Task completed successfully");
+                    aiTaskStateRepository.save(finalState);
+
                     emitter.send(SseEmitter.event()
                             .name("done")
                             .data(""));
@@ -366,7 +395,7 @@ public class AiResumeService {
                 String userPrompt = String.format("""
                     Target Job Description:
                     %s
-                    
+
                     Raw Experience Text:
                     %s
                     %s
@@ -378,11 +407,23 @@ public class AiResumeService {
                         .stream()
                         .content();
 
+                int count = 0;
                 for (String chunk : contentFlux.toIterable()) {
                     emitter.send(SseEmitter.event()
                             .name("token")
                             .data(chunk));
+                    count++;
+                    if (count % 5 == 0) {
+                        AITaskState current = aiTaskStateRepository.findById(taskId).orElse(taskState);
+                        current.setMessage(String.format("Generating tokens: %d chunks emitted", count));
+                        aiTaskStateRepository.save(current);
+                    }
                 }
+
+                AITaskState finalState = aiTaskStateRepository.findById(taskId).orElse(taskState);
+                finalState.setStatus("COMPLETED");
+                finalState.setMessage("Task completed successfully");
+                aiTaskStateRepository.save(finalState);
 
                 // Send done event and complete
                 emitter.send(SseEmitter.event()
@@ -390,12 +431,57 @@ public class AiResumeService {
                         .data(""));
                 emitter.complete();
             } catch (Exception e) {
+                AITaskState finalState = aiTaskStateRepository.findById(taskId).orElse(taskState);
+                finalState.setStatus("FAILED");
+                finalState.setMessage("Error: " + e.getMessage());
+                aiTaskStateRepository.save(finalState);
+
                 try {
                     emitter.send(SseEmitter.event()
                             .name("error")
                             .data(e.getMessage()));
                 } catch (IOException ignored) {}
                 emitter.completeWithError(e);
+            } finally {
+                emitterMap.remove(taskId);
+            }
+        });
+
+        return taskId;
+    }
+
+    public String handleOpenAiFallback(ExperienceOptimizationRequest request, String username, Throwable t) {
+        logger.error("AI Optimization service is temporarily degraded. Fallback triggered. Error: {}", t.getMessage());
+        String taskId = UUID.randomUUID().toString();
+
+        AITaskState taskState = AITaskState.builder()
+                .taskId(taskId)
+                .username(username)
+                .status("PROCESSING")
+                .message("Task initiated (fallback mode)")
+                .timestamp(System.currentTimeMillis())
+                .build();
+        aiTaskStateRepository.save(taskState);
+
+        SseEmitter emitter = new SseEmitter(180000L);
+        emitterMap.put(taskId, emitter);
+
+        executorService.submit(() -> {
+            try {
+                Thread.sleep(500);
+
+                AITaskState finalState = aiTaskStateRepository.findById(taskId).orElse(taskState);
+                finalState.setStatus("FAILED");
+                finalState.setMessage("AI Optimization service is temporarily degraded. Retrying shortly.");
+                aiTaskStateRepository.save(finalState);
+
+                emitter.send(SseEmitter.event()
+                        .name("error")
+                        .data("AI Optimization service is temporarily degraded. Retrying shortly."));
+                emitter.complete();
+            } catch (Exception ex) {
+                logger.error("Failed to send fallback error event to emitter", ex);
+                emitter.completeWithError(ex);
             } finally {
                 emitterMap.remove(taskId);
             }

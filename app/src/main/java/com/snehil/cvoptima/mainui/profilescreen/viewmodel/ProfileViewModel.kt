@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import com.snehil.cvoptima.data.remote.model.UserProfileDto
 import com.snehil.cvoptima.domain.repository.TokenRepository
+import com.snehil.cvoptima.data.local.AppDatabase
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -26,7 +27,8 @@ class ProfileViewModel @Inject constructor(
     private val educationDao: EducationDao,
     private val skillDao: SkillDao,
     private val tokenRepository: TokenRepository,
-    private val apiService: ApiService
+    private val apiService: ApiService,
+    private val appDatabase: AppDatabase
 ) : ViewModel() {
 
     // Expose Room flows directly for tab views
@@ -42,17 +44,17 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun logout(onSuccess: () -> Unit) {
-        viewModelScope.launch {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                // Clear local Room database caches
-                experienceDao.deleteByResumeId(1L)
-                educationDao.deleteByResumeId(1L)
-                skillDao.deleteByResumeId(1L)
+                // Wipe database cleanly under a single atomic transaction
+                appDatabase.clearAllUserData()
                 
                 // Clear authentication token
                 tokenRepository.clearToken()
                 
-                onSuccess()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onSuccess()
+                }
             } catch (e: Exception) {
                 android.util.Log.e("API_MONITOR", "Failed to sync logout with server", e)
                 // Handle logout exception
