@@ -129,9 +129,9 @@ class HomeViewModel @Inject constructor(
                 val layout = layoutSettingsDao.getByResumeId(1L)
 
                 val profileDto = UserProfileDto(
-                    username = "default_user",
-                    email = basicInfo?.email ?: "user@example.com",
-                    name = basicInfo?.name ?: "Compiled Resume",
+                    username = _userProfile.value?.username ?: "default_user",
+                    email = basicInfo?.email ?: (_userProfile.value?.email ?: ""),
+                    name = basicInfo?.name ?: (_userProfile.value?.name ?: _userProfile.value?.username ?: "Compiled Resume"),
                     contactNumber = basicInfo?.contactNumber,
                     linkedinUrl = basicInfo?.linkedinUrl,
                     githubUrl = basicInfo?.githubUrl,

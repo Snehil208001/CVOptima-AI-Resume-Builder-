@@ -190,11 +190,11 @@ fun ProfileHeaderCard(profile: UserProfileDto?, onLogoutClick: () -> Unit) {
             profile.username
         }
     } else {
-        "John Doe"
+        ""
     }
 
-    val displayEmail = profile?.email ?: "john.doe@gmail.com"
-    val initial = displayName.firstOrNull()?.toString()?.uppercase() ?: "J"
+    val displayEmail = profile?.email ?: ""
+    val initial = if (displayName.isNotEmpty()) displayName.first().toString().uppercase() else "?"
 
     Card(
         shape = RoundedCornerShape(24.dp),

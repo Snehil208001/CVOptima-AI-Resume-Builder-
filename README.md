@@ -33,12 +33,15 @@ The project follows a split-module structure:
 * **AI Optimization Entry Gate (`JobInputScreen`)**: A validation-locked input interface featuring structured fields for target company name, desired job title, and a large multi-line text area (240.dp) for pasting raw job descriptions. Validation automatically unlocks the optimization flow.
 * **SSE Typewriter Generation (`StreamingGenerationScreen`)**: A specialized monospaced console view that listens to backend Server-Sent Events (SSE) using OkHttp's `EventSource` and renders optimized resume bullet points dynamically with auto-scroll logic.
 * **Offline-First Database**: Locally caches tokens, educational history, work experiences, and skills using Android Room Database.
-* **Smart Network Layer**: Features Retrofit/OkHttp with custom authentication interceptors (`AuthInterceptor`) for seamless bearer-token authorization.
+* **Smart Network & Cleartext Support**: Integrated custom auth interceptors (`AuthInterceptor`) and customized the network security configuration (`usesCleartextTraffic`) to support HTTP connections to local developer addresses (e.g. `192.168.1.8`, `localhost`) for physical device debugging.
+* **Dynamic Profile Seeding & Compile Fallbacks**: Replaced all hardcoded email, name, and profile details with dynamic fallback chains resolving to the authenticated database/network profile, checking for empty experiences before running optimization.
+* **Smart FAB & Navigation Overhaul**: Cleaned up the homescreen Floating Action Button (FAB) navigation to route straight to the AI tailoring input flow, hiding the FAB dynamically when the user's profile is empty to prevent UI clutter and button overlaps.
 * **Asynchronous Image Loading**: Integrated with Coil for fast, memory-efficient image rendering.
 
 ### ⚙️ Spring Boot Backend
 * **AI Resume Optimization**: Uses Spring AI (OpenAI models) to optimize raw resume text using the **Google X-Y-Z Formula**:
   > *"Accomplished **[X]** as measured by **[Y]**, by doing **[Z]**"*
+* **Detailed OpenAI Request & Response Logging**: Implemented debug logging to print the exact System Prompt, User Prompt, and raw/accumulated API responses for all OpenAI endpoint operations (ATS assessment, experience optimization, and summary generation).
 * **Clean User Profile Seeding**: Removed all hardcoded profile values, ensuring a generic default template is used if a fallback user is instantiated.
 * **AI ATS compatibility Score evaluation**: Leverages Spring AI to calculate overall compatibility scores and produce structured lists of recommendations.
 * **AI Summary Generator**: Tailors dynamic professional summaries on the fly based on specific specialization and role parameters.

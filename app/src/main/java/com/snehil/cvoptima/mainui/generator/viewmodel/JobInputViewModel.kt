@@ -46,13 +46,18 @@ class JobInputViewModel @Inject constructor(
             try {
                 // Fetch local work experiences
                 val experiences = experienceDao.getByResumeId(1L)
-                val rawExperience = if (experiences.isNotEmpty()) {
-                    experiences.joinToString(separator = "\n\n") { exp ->
-                        "Company: ${exp.company}\nTitle: ${exp.title}\nRole Dates: ${exp.startDate ?: "N/A"} to ${exp.endDate ?: "N/A"}\nDescription: ${exp.description ?: "N/A"}"
+                if (experiences.isEmpty()) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "Please add at least one work experience to your Profile first."
+                        )
                     }
-                } else {
-                    // Pre-populate a standard default background if local DB is empty
-                    "Company: Freelance\nTitle: Software Developer\nRole Dates: Jan 2022 to Present\nDescription: Built custom mobile applications using Kotlin, Java, and Android SDK. Collaborated on API integrations and unit testing."
+                    return@launch
+                }
+
+                val rawExperience = experiences.joinToString(separator = "\n\n") { exp ->
+                    "Company: ${exp.company}\nTitle: ${exp.title}\nRole Dates: ${exp.startDate ?: "N/A"} to ${exp.endDate ?: "N/A"}\nDescription: ${exp.description ?: "N/A"}"
                 }
 
                 // Call endpoint

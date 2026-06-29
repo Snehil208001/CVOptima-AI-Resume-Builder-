@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.snehil.cvoptima.core.di.NetworkModule
 import com.snehil.cvoptima.data.local.dao.*
 import com.snehil.cvoptima.data.remote.model.*
+import com.snehil.cvoptima.data.remote.ApiService
 import com.snehil.cvoptima.mainui.generator.ResumePdfExporter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,7 +29,8 @@ class StreamingGenerationViewModel @Inject constructor(
     private val skillGroupDao: SkillGroupDao,
     private val projectDao: ProjectDao,
     private val certificationDao: CertificationDao,
-    private val layoutSettingsDao: LayoutSettingsDao
+    private val layoutSettingsDao: LayoutSettingsDao,
+    private val apiService: ApiService
 ) : ViewModel() {
 
     private val _streamedText = MutableStateFlow("")
@@ -102,10 +104,16 @@ class StreamingGenerationViewModel @Inject constructor(
                 val certs = certificationDao.getByResumeId(1L)
                 val layout = layoutSettingsDao.getByResumeId(1L)
 
+                val userProfile = try {
+                    apiService.getProfile()
+                } catch (e: Exception) {
+                    null
+                }
+
                 val profileDto = UserProfileDto(
-                    username = "default_user",
-                    email = basicInfo?.email ?: "user@example.com",
-                    name = basicInfo?.name ?: "Compiled Resume",
+                    username = userProfile?.username ?: "default_user",
+                    email = basicInfo?.email ?: (userProfile?.email ?: ""),
+                    name = basicInfo?.name ?: (userProfile?.name ?: userProfile?.username ?: "Compiled Resume"),
                     contactNumber = basicInfo?.contactNumber,
                     linkedinUrl = basicInfo?.linkedinUrl,
                     githubUrl = basicInfo?.githubUrl,

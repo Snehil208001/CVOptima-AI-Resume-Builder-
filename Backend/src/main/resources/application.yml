@@ -23,6 +23,8 @@ logging:
   level:
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.springframework.web.client.RestClient: DEBUG
+    org.springframework.ai: DEBUG
 
 resilience4j:
   circuitbreaker:

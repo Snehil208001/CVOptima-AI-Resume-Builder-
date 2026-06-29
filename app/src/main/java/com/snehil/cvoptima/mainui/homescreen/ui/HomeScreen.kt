@@ -168,15 +168,16 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
+            val isProfileEmpty = userProfile?.name.isNullOrBlank()
             val showFab = when (val state = uiState) {
-                is HomeUiState.Success -> state.documents.isNotEmpty()
+                is HomeUiState.Success -> !isProfileEmpty
                 else -> false
             }
             if (showFab) {
                 ExtendedFloatingActionButton(
-                    onClick = { navController.navigate(Screen.ProfileEditor.route) },
-                    icon = { Icon(Icons.Default.Build, contentDescription = null) },
-                    text = { Text("Create Tailored Resume") },
+                    onClick = { navController.navigate(Screen.JobInput.route) },
+                    icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                    text = { Text("Tailor New Resume") },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = RoundedCornerShape(16.dp),
@@ -309,7 +310,16 @@ fun HomeScreen(
                         }
                         is HomeUiState.Success -> {
                             if (state.documents.isEmpty()) {
-                                EmptyStateView(onCreateClick = { navController.navigate(Screen.ProfileEditor.route) })
+                                EmptyStateView(
+                                    isProfileEmpty = userProfile?.name.isNullOrBlank(),
+                                    onCreateClick = {
+                                        if (userProfile?.name.isNullOrBlank()) {
+                                            navController.navigate(Screen.ProfileEditor.route)
+                                        } else {
+                                            navController.navigate(Screen.JobInput.route)
+                                        }
+                                    }
+                                )
                             } else {
                                 LazyColumn(
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -765,7 +775,10 @@ fun DocumentItemCard(
 }
 
 @Composable
-fun EmptyStateView(onCreateClick: () -> Unit) {
+fun EmptyStateView(
+    isProfileEmpty: Boolean,
+    onCreateClick: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -774,19 +787,19 @@ fun EmptyStateView(onCreateClick: () -> Unit) {
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Default.History,
-            contentDescription = "No History",
+            imageVector = if (isProfileEmpty) Icons.Default.Description else Icons.Default.History,
+            contentDescription = "No Resume",
             modifier = Modifier.size(64.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "No Resume History",
+            text = if (isProfileEmpty) "No Resume Profile Built" else "No Resume History",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            text = "Your tailored and optimized resumes will appear here.",
+            text = if (isProfileEmpty) "Build your master profile first to start generating tailored resumes." else "Your tailored and optimized resumes will appear here.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             modifier = Modifier.padding(horizontal = 24.dp),
@@ -797,9 +810,9 @@ fun EmptyStateView(onCreateClick: () -> Unit) {
             onClick = onCreateClick,
             shape = RoundedCornerShape(16.dp)
         ) {
-            Icon(Icons.Default.Build, contentDescription = null)
+            Icon(if (isProfileEmpty) Icons.Default.Add else Icons.Default.Build, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Create Tailored Resume", fontWeight = FontWeight.Bold)
+            Text(if (isProfileEmpty) "Build Main Resume" else "Create Tailored Resume", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -1002,41 +1015,54 @@ fun MainResumeCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(
-                    onClick = onDownloadClick,
-                    modifier = Modifier.weight(1.2f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Download PDF", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
+                if (userProfile?.name.isNullOrBlank()) {
+                    Button(
+                        onClick = onEditClick,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Build Main Resume", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Button(
+                        onClick = onDownloadClick,
+                        modifier = Modifier.weight(1.2f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Download PDF", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
 
-                OutlinedButton(
-                    onClick = onEditClick,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Edit Details", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
+                    OutlinedButton(
+                        onClick = onEditClick,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Edit Details", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
 
-                IconButton(
-                    onClick = { showResetConfirm = true },
-                    modifier = Modifier
-                        .background(
-                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(12.dp)
+                    IconButton(
+                        onClick = { showResetConfirm = true },
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Reset Profile",
+                            tint = MaterialTheme.colorScheme.error
                         )
-                        .size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Reset Profile",
-                        tint = MaterialTheme.colorScheme.error
-                    )
+                    }
                 }
             }
         }

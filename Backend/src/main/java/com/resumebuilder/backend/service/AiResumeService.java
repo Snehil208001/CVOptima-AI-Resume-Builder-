@@ -135,14 +135,14 @@ public class AiResumeService {
         }
 
         try {
-            logger.info("Sending prompt to OpenAI chat client for ATS analysis...");
+            logger.info("[OpenAI Request] Sending ATS analysis request.\nSystem Prompt: {}\nUser Prompt: {}", ATS_ANALYSIS_SYSTEM_PROMPT, userPrompt);
             String rawResponse = chatClient.prompt()
                     .system(ATS_ANALYSIS_SYSTEM_PROMPT)
                     .user(userPrompt)
                     .call()
                     .content();
 
-            logger.info("Received raw response from OpenAI: {}", rawResponse);
+            logger.info("[OpenAI Response] Received raw response from OpenAI: {}", rawResponse);
 
             // Parse JSON response
             ObjectMapper mapper = new ObjectMapper();
@@ -292,6 +292,11 @@ public class AiResumeService {
             throw new IllegalArgumentException("Job description cannot be null or empty");
         }
 
+        if (apiKey == null || apiKey.trim().isEmpty() || apiKey.contains("dummy") || apiKey.contains("please-set")) {
+            logger.warn("OpenAI API key is not configured. Falling back to local offline dynamic experience optimizer.");
+            return buildDynamicMockExperience(rawExperience);
+        }
+
         String context = buildCandidateContext(username);
 
         String userPrompt = String.format("""
@@ -303,11 +308,14 @@ public class AiResumeService {
             %s
             """, jobDescription.trim(), rawExperience.trim(), context);
 
-        return chatClient.prompt()
+        logger.info("[OpenAI Request] Sending Experience Optimization request.\nSystem Prompt: {}\nUser Prompt: {}", SYSTEM_PROMPT, userPrompt);
+        String rawResponse = chatClient.prompt()
                 .system(SYSTEM_PROMPT)
                 .user(userPrompt)
                 .call()
                 .content();
+        logger.info("[OpenAI Response] Received raw response from OpenAI: {}", rawResponse);
+        return rawResponse;
     }
 
     /**
@@ -360,10 +368,7 @@ public class AiResumeService {
         executorService.submit(() -> {
             try {
                 if (apiKey == null || apiKey.trim().isEmpty() || apiKey.contains("dummy") || apiKey.contains("please-set")) {
-                    String mockResponse = "• Restructured Android package module hierarchy to enforce clean separation of concerns, decreasing build times by 24%.\n" +
-                            "• Integrated Jetpack Compose UI with unidirectional data flow (UDF), improving developer productivity and rendering performance.\n" +
-                            "• Orchestrated background tasks using Kotlin Coroutines and WorkManager, resulting in a 40% reduction in database-related main-thread blocks.\n" +
-                            "• Implemented robust error-handling policies and local DB fallback mechanisms, raising application reliability to 99.8% crash-free sessions.";
+                    String mockResponse = buildDynamicMockExperience(request.getRawExperience());
 
                     String[] words = mockResponse.split(" ");
                     int count = 0;
@@ -401,14 +406,18 @@ public class AiResumeService {
                     %s
                     """, request.getTargetJobDescription().trim(), request.getRawExperience().trim(), context);
 
+                logger.info("[OpenAI Request] Sending Streaming Experience Optimization request.\nSystem Prompt: {}\nUser Prompt: {}", SYSTEM_PROMPT, userPrompt);
                 Flux<String> contentFlux = chatClient.prompt()
                         .system(SYSTEM_PROMPT)
                         .user(userPrompt)
                         .stream()
                         .content();
 
+                StringBuilder accumulatedResponse = new StringBuilder();
                 int count = 0;
                 for (String chunk : contentFlux.toIterable()) {
+                    accumulatedResponse.append(chunk);
+                    logger.info("[OpenAI Response Chunk] Received token: {}", chunk);
                     emitter.send(SseEmitter.event()
                             .name("token")
                             .data(chunk));
@@ -419,6 +428,7 @@ public class AiResumeService {
                         aiTaskStateRepository.save(current);
                     }
                 }
+                logger.info("[OpenAI Response] Stream Complete. Accumulated Response: {}", accumulatedResponse.toString());
 
                 AITaskState finalState = aiTaskStateRepository.findById(taskId).orElse(taskState);
                 finalState.setStatus("COMPLETED");
@@ -597,18 +607,50 @@ public class AiResumeService {
         );
 
         try {
-            logger.info("Sending prompt to OpenAI chat client for summary generation...");
+            logger.info("[OpenAI Request] Sending summary generation request.\nSystem Prompt: {}\nUser Prompt: {}", SUMMARY_GENERATION_SYSTEM_PROMPT, userPrompt);
             String rawResponse = chatClient.prompt()
                     .system(SUMMARY_GENERATION_SYSTEM_PROMPT)
                     .user(userPrompt)
                     .call()
                     .content();
 
-            logger.info("Received summary from OpenAI: {}", rawResponse);
+            logger.info("[OpenAI Response] Received summary from OpenAI: {}", rawResponse);
             return rawResponse.trim();
         } catch (Exception e) {
             logger.error("OpenAI summary generation failed. Falling back to mock summary response.", e);
             return buildMockSummaryResponse(request);
         }
+    }
+
+    private String buildDynamicMockExperience(String rawExperience) {
+        if (rawExperience == null || rawExperience.trim().isEmpty()) {
+            return "";
+        }
+        String[] lines = rawExperience.split("\n");
+        StringBuilder sb = new StringBuilder();
+        String[] verbs = {"Optimized", "Engineered", "Implemented", "Developed", "Led", "Architected", "Spearheaded"};
+        int verbIndex = 0;
+        for (String line : lines) {
+            String clean = line.trim();
+            if (clean.isEmpty()) continue;
+            // Remove existing bullet characters
+            clean = clean.replaceAll("^\\s*[•\\-*#+]\\s*", "");
+            if (clean.isEmpty()) continue;
+            
+            // Check if it already starts with a verb or capitalize first word
+            String[] words = clean.split("\\s+");
+            if (words.length > 0) {
+                String firstWord = words[0];
+                if (!firstWord.toLowerCase().endsWith("ed") && !firstWord.toLowerCase().endsWith("ing")) {
+                    String chosenVerb = verbs[verbIndex % verbs.length];
+                    verbIndex++;
+                    clean = chosenVerb + " " + Character.toLowerCase(clean.charAt(0)) + clean.substring(1);
+                } else {
+                    clean = Character.toUpperCase(clean.charAt(0)) + clean.substring(1);
+                }
+            }
+            sb.append("• ").append(clean).append("\n");
+        }
+        return sb.toString().trim();
     }
 }

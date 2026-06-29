@@ -278,16 +278,16 @@ public class ProfileController {
             }
             User defaultUser = User.builder()
                     .username("default_user")
-                    .email("default@example.com")
+                    .email("")
                     .password("password")
-                    .firstName("Default")
-                    .lastName("User")
-                    .name("Default User")
+                    .firstName("")
+                    .lastName("")
+                    .name("")
                     .contactNumber("")
                     .linkedinUrl("")
                     .githubUrl("")
                     .portfolioUrl("")
-                    .professionalSummary("Experienced professional.")
+                    .professionalSummary("")
                     .resumes(new ArrayList<>())
                     .build();
             return userRepository.save(defaultUser);
